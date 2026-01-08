@@ -3,10 +3,716 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>hello world</title>
-	<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+	<title>Simple Slot Machine</title>
+	<style>
+		:root{
+			--bg-deep:#12151e;
+			--bg-glow:#3f2a2c;
+			--panel:#1b1f2a;
+			--panel-edge:#2d3446;
+			--accent:#f2b233;
+			--accent-strong:#ff4b3a;
+			--accent-cool:#3fc2d0;
+			--text:#f5f2ea;
+			--text-dim:#b6b2a8;
+			--win:#ffe66d;
+		}
+		*{box-sizing:border-box}
+		body{
+			margin:0;
+			font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+			color:var(--text);
+			background:
+				radial-gradient(900px 500px at 20% 10%, rgba(242,178,51,0.25), transparent 60%),
+				radial-gradient(700px 480px at 80% 20%, rgba(63,194,208,0.2), transparent 55%),
+				linear-gradient(160deg, #0f1118, #1a1012 55%, #0f1b20);
+			min-height:100vh;
+			display:flex;
+			align-items:center;
+			justify-content:center;
+			padding:32px 16px;
+		}
+		.page{
+			width:min(1100px, 100%);
+			display:grid;
+			grid-template-rows:auto auto;
+			gap:24px;
+			animation:fadeIn 800ms ease-out;
+		}
+		.title{
+			font-size:clamp(26px, 3vw, 38px);
+			letter-spacing:0.08em;
+			text-transform:uppercase;
+			margin:0 0 8px;
+		}
+		.subtitle{
+			color:var(--text-dim);
+			margin:0 0 18px;
+			font-size:14px;
+		}
+		.slot-section{
+			background:linear-gradient(155deg, #1a2030, #0f1118 70%);
+			border-radius:26px;
+			padding:24px;
+			box-shadow:0 30px 60px rgba(0,0,0,0.4);
+			border:1px solid rgba(255,255,255,0.08);
+			position:relative;
+			overflow:hidden;
+		}
+		.slot-section::after{
+			content:"";
+			position:absolute;
+			inset:-40% 10% auto auto;
+			width:180px;
+			height:180px;
+			border-radius:50%;
+			background:radial-gradient(circle, rgba(255,230,109,0.35), transparent 70%);
+			filter:blur(2px);
+			pointer-events:none;
+		}
+		.machine{
+			display:grid;
+			gap:18px;
+		}
+		.counters{
+			display:grid;
+			grid-template-columns:repeat(3, minmax(0,1fr));
+			gap:12px;
+		}
+		.counter{
+			background:var(--panel);
+			border-radius:14px;
+			padding:12px 14px;
+			border:1px solid rgba(255,255,255,0.08);
+			box-shadow:inset 0 0 12px rgba(0,0,0,0.4);
+			font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+			text-align:center;
+		}
+		.counter span{
+			display:block;
+			font-size:12px;
+			color:var(--text-dim);
+			letter-spacing:0.08em;
+		}
+		.counter strong{
+			font-size:20px;
+			margin-top:6px;
+			display:block;
+		}
+		.play-area{
+			display:grid;
+			grid-template-columns:minmax(160px, 220px) 1fr;
+			gap:16px;
+			align-items:stretch;
+		}
+		.control-panel{
+			display:flex;
+			flex-direction:column;
+			gap:12px;
+			background:var(--panel);
+			border-radius:18px;
+			padding:16px;
+			border:1px solid rgba(255,255,255,0.08);
+		}
+		.control-panel h3{
+			margin:0;
+			font-size:14px;
+			letter-spacing:0.1em;
+			color:var(--text-dim);
+		}
+		.button{
+			border:none;
+			border-radius:16px;
+			padding:12px 16px;
+			font-size:16px;
+			font-weight:700;
+			cursor:pointer;
+			transition:transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+			text-transform:uppercase;
+			letter-spacing:0.08em;
+		}
+		.button:disabled{
+			opacity:0.5;
+			cursor:not-allowed;
+		}
+		.button:active{
+			transform:translateY(2px) scale(0.98);
+		}
+		.insert-button{
+			background:linear-gradient(135deg, #f2b233, #ff8340);
+			color:#1b1206;
+			box-shadow:0 10px 20px rgba(242,178,51,0.3);
+		}
+		.lever-button{
+			background:linear-gradient(135deg, #df2f2f, #ff6a2a);
+			color:white;
+			box-shadow:0 10px 20px rgba(255,74,58,0.35);
+		}
+		.inserted{
+			background:#141924;
+			border-radius:12px;
+			padding:10px 12px;
+			font-size:14px;
+			text-align:center;
+			color:var(--text-dim);
+			border:1px solid rgba(255,255,255,0.06);
+		}
+		.message{
+			min-height:48px;
+			padding:10px 12px;
+			border-radius:12px;
+			background:rgba(0,0,0,0.35);
+			font-size:13px;
+			color:var(--text-dim);
+			line-height:1.4;
+		}
+		.reels-panel{
+			display:grid;
+			grid-template-rows:auto auto auto;
+			gap:12px;
+		}
+		.reels{
+			display:grid;
+			grid-template-columns:repeat(3, minmax(0, 1fr));
+			gap:12px;
+		}
+		.reel{
+			background:linear-gradient(180deg, #0f131b, #222a3a);
+			border-radius:18px;
+			padding:14px;
+			border:1px solid rgba(255,255,255,0.08);
+			text-align:center;
+			font-size:32px;
+			position:relative;
+			overflow:hidden;
+		}
+		.reel::before{
+			content:"";
+			position:absolute;
+			inset:6px;
+			border-radius:14px;
+			border:1px solid rgba(255,255,255,0.08);
+			pointer-events:none;
+		}
+		.symbol{
+			display:flex;
+			align-items:center;
+			justify-content:center;
+			height:48px;
+			font-size:32px;
+		}
+		.symbol.middle{
+			font-size:36px;
+			color:var(--win);
+			text-shadow:0 0 12px rgba(255,230,109,0.3);
+		}
+		.counter-row{
+			display:grid;
+			grid-template-columns:repeat(3, minmax(0,1fr));
+			gap:8px;
+		}
+		.counter-row .counter{
+			font-size:13px;
+		}
+		.stop-row{
+			display:flex;
+			gap:12px;
+			align-items:center;
+			justify-content:flex-start;
+		}
+		.stop-button{
+			width:54px;
+			height:54px;
+			border-radius:50%;
+			border:none;
+			background:radial-gradient(circle at 30% 30%, #ff8c8c, #d60000 70%);
+			box-shadow:0 6px 14px rgba(0,0,0,0.4), inset 0 0 8px rgba(255,255,255,0.3);
+			cursor:pointer;
+			transition:transform 120ms ease, opacity 120ms ease;
+		}
+		.stop-button:disabled{
+			opacity:0.4;
+			cursor:not-allowed;
+		}
+		.stop-button:active{
+			transform:scale(0.96);
+		}
+		.stop-label{
+			font-size:12px;
+			color:var(--text-dim);
+			margin-top:4px;
+			text-align:center;
+		}
+		.stop-group{
+			display:flex;
+			flex-direction:column;
+			align-items:center;
+			gap:6px;
+		}
+		.resource-section{
+			background:linear-gradient(145deg, #141824, #0d1118);
+			border-radius:20px;
+			padding:18px 22px;
+			border:1px solid rgba(255,255,255,0.08);
+			display:flex;
+			justify-content:space-between;
+			align-items:center;
+		}
+		.resource-card{
+			display:flex;
+			flex-direction:column;
+			gap:6px;
+		}
+		.resource-card span{
+			color:var(--text-dim);
+			font-size:13px;
+			letter-spacing:0.1em;
+		}
+		.resource-card strong{
+			font-size:28px;
+			font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+		}
+		.rush .slot-section{
+			border-color:rgba(255,230,109,0.5);
+			box-shadow:0 0 40px rgba(255,230,109,0.25);
+			animation:glowPulse 1.8s ease-in-out infinite;
+		}
+		.rush .reel{
+			box-shadow:0 0 24px rgba(255,230,109,0.25);
+		}
+		.rush .lever-button{
+			box-shadow:0 12px 26px rgba(255,230,109,0.35);
+		}
+		.machine.win{
+			animation:flash 0.6s ease;
+		}
+		@keyframes glowPulse{
+			0%{box-shadow:0 0 20px rgba(255,230,109,0.25)}
+			50%{box-shadow:0 0 45px rgba(255,230,109,0.45)}
+			100%{box-shadow:0 0 20px rgba(255,230,109,0.25)}
+		}
+		@keyframes flash{
+			0%{filter:brightness(1)}
+			50%{filter:brightness(1.6)}
+			100%{filter:brightness(1)}
+		}
+		@keyframes fadeIn{
+			from{opacity:0;transform:translateY(16px)}
+			to{opacity:1;transform:translateY(0)}
+		}
+		@media (max-width:900px){
+			.play-area{grid-template-columns:1fr}
+			.reels-panel{order:-1}
+			.stop-row{justify-content:space-between}
+			.control-panel{flex-direction:row;flex-wrap:wrap;justify-content:space-between}
+			.control-panel h3{width:100%}
+			.message{width:100%}
+		}
+		@media (max-width:600px){
+			.counters{grid-template-columns:1fr}
+			.counter-row{grid-template-columns:1fr}
+			.reels{grid-template-columns:1fr}
+			.stop-row{flex-direction:column;align-items:stretch}
+			.stop-group{flex-direction:row;justify-content:center}
+			.stop-label{margin:0 8px 0 0}
+		}
+	</style>
 </head>
 <body>
-	<h1>hello world</h1>
+	<div class="page">
+		<div>
+			<h1 class="title">Moonlight Slot</h1>
+			<p class="subtitle">3リール・3ラインのシンプルスロット。MAX BETでスタート。</p>
+		</div>
+		<section class="slot-section">
+			<div class="machine" id="machine">
+				<div class="counters">
+					<div class="counter">
+						<span>現在の回転数</span>
+						<strong id="currentSpins">0</strong>
+					</div>
+					<div class="counter">
+						<span>累計回転数</span>
+						<strong id="totalSpins">0</strong>
+					</div>
+					<div class="counter">
+						<span>BB / RB / RUSH</span>
+						<strong id="bonusInfo">BB: 0 / RB: 0 / RUSH: 0</strong>
+					</div>
+				</div>
+				<div class="play-area">
+					<div class="control-panel">
+						<h3>COIN</h3>
+						<button class="button insert-button" id="insertCoin">コイン投入</button>
+						<div class="inserted">投入コイン <strong id="insertedCoins">0</strong> / 3</div>
+						<div class="message" id="message">レバーを引くにはコイン3枚が必要です。</div>
+					</div>
+					<div class="reels-panel">
+						<div class="reels">
+							<div class="reel" data-reel="0">
+								<div class="symbol top" id="reel0-top">🍒</div>
+								<div class="symbol middle" id="reel0-mid">7️⃣</div>
+								<div class="symbol bottom" id="reel0-bot">🍋</div>
+							</div>
+							<div class="reel" data-reel="1">
+								<div class="symbol top" id="reel1-top">🍉</div>
+								<div class="symbol middle" id="reel1-mid">⭐</div>
+								<div class="symbol bottom" id="reel1-bot">🔔</div>
+							</div>
+							<div class="reel" data-reel="2">
+								<div class="symbol top" id="reel2-top">🍒</div>
+								<div class="symbol middle" id="reel2-mid">🍋</div>
+								<div class="symbol bottom" id="reel2-bot">7️⃣</div>
+							</div>
+						</div>
+						<div class="counter-row">
+							<div class="counter"><span>現回転</span><strong id="currentSpinsMini">0</strong></div>
+							<div class="counter"><span>総回転</span><strong id="totalSpinsMini">0</strong></div>
+							<div class="counter"><span>ボーナス</span><strong id="bonusMini">BB: 0 / RB: 0 / RUSH: 0</strong></div>
+						</div>
+						<div class="stop-row">
+							<button class="button lever-button" id="lever">レバー</button>
+							<div class="stop-group">
+								<button class="stop-button" data-stop="0" disabled></button>
+								<div class="stop-label">STOP 1</div>
+							</div>
+							<div class="stop-group">
+								<button class="stop-button" data-stop="1" disabled></button>
+								<div class="stop-label">STOP 2</div>
+							</div>
+							<div class="stop-group">
+								<button class="stop-button" data-stop="2" disabled></button>
+								<div class="stop-label">STOP 3</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		<section class="resource-section">
+			<div class="resource-card">
+				<span>手持ちコイン</span>
+				<strong id="handCoins">100</strong>
+			</div>
+			<div class="resource-card">
+				<span>RUSH状態</span>
+				<strong id="rushState">通常</strong>
+			</div>
+		</section>
+	</div>
+	<script>
+		const SYMBOLS = ["🍒", "🍋", "🍉", "🔔", "⭐", "7️⃣"];
+		const PAYOUTS = {
+			"🍒": 5,
+			"🍋": 10,
+			"🍉": 15,
+			"🔔": 30,
+			"⭐": 80,
+			"7️⃣": 200
+		};
+		const BASE_PROBS = [
+			{ symbol: "🍒", p: 0.12 },
+			{ symbol: "🍋", p: 0.10 },
+			{ symbol: "🍉", p: 0.08 },
+			{ symbol: "🔔", p: 0.05 },
+			{ symbol: "⭐", p: 0.02 },
+			{ symbol: "7️⃣", p: 0.005 }
+		];
+		const state = {
+			coins: 100,
+			inserted: 0,
+			spinning: false,
+			currentSpinRush: false,
+			reels: [],
+			outcome: null,
+			rushRemaining: 0,
+			currentSpins: 0,
+			totalSpins: 0,
+			bb: 0,
+			rb: 0
+		};
+
+		const elements = {
+			insertCoin: document.getElementById("insertCoin"),
+			lever: document.getElementById("lever"),
+			insertedCoins: document.getElementById("insertedCoins"),
+			message: document.getElementById("message"),
+			handCoins: document.getElementById("handCoins"),
+			currentSpins: document.getElementById("currentSpins"),
+			totalSpins: document.getElementById("totalSpins"),
+			bonusInfo: document.getElementById("bonusInfo"),
+			currentSpinsMini: document.getElementById("currentSpinsMini"),
+			totalSpinsMini: document.getElementById("totalSpinsMini"),
+			bonusMini: document.getElementById("bonusMini"),
+			rushState: document.getElementById("rushState"),
+			machine: document.getElementById("machine")
+		};
+
+		const stopButtons = Array.from(document.querySelectorAll(".stop-button"));
+
+		function buildStrip() {
+			const strip = [];
+			for (let i = 0; i < 24; i += 1) {
+				strip.push(SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
+			}
+			return strip;
+		}
+
+		function initReels() {
+			state.reels = Array.from({ length: 3 }, (_, index) => {
+				const strip = buildStrip();
+				const startIndex = Math.floor(Math.random() * strip.length);
+				return {
+					strip,
+					index: startIndex,
+					targetIndex: startIndex,
+					interval: null,
+					stopped: true,
+					speed: 70 + index * 20
+				};
+			});
+			updateReels();
+		}
+
+		function getSymbolAt(strip, idx) {
+			const len = strip.length;
+			return strip[(idx + len) % len];
+		}
+
+		function getVisible(strip, index) {
+			return {
+				top: getSymbolAt(strip, index - 1),
+				middle: getSymbolAt(strip, index),
+				bottom: getSymbolAt(strip, index + 1)
+			};
+		}
+
+		function updateReels() {
+			state.reels.forEach((reel, i) => {
+				const { top, middle, bottom } = getVisible(reel.strip, reel.index);
+				document.getElementById(`reel${i}-top`).textContent = top;
+				document.getElementById(`reel${i}-mid`).textContent = middle;
+				document.getElementById(`reel${i}-bot`).textContent = bottom;
+			});
+		}
+
+		function updateCounters() {
+			elements.handCoins.textContent = state.coins;
+			elements.insertedCoins.textContent = state.inserted;
+			elements.currentSpins.textContent = state.currentSpins;
+			elements.totalSpins.textContent = state.totalSpins;
+			const bonusText = `BB: ${state.bb} / RB: ${state.rb} / RUSH: ${state.rushRemaining}`;
+			elements.bonusInfo.textContent = bonusText;
+			elements.currentSpinsMini.textContent = state.currentSpins;
+			elements.totalSpinsMini.textContent = state.totalSpins;
+			elements.bonusMini.textContent = bonusText;
+			elements.rushState.textContent = state.rushRemaining > 0 || state.currentSpinRush ? "RUSH" : "通常";
+		}
+
+		function updateMessage(text, isAlert = false) {
+			elements.message.textContent = text;
+			elements.message.style.color = isAlert ? "#ffb4a7" : "var(--text-dim)";
+		}
+
+		function setButtonsEnabled() {
+			elements.insertCoin.disabled = state.spinning || state.inserted >= 3 || state.coins <= 0;
+			elements.lever.disabled = state.spinning || state.inserted < 3;
+			stopButtons.forEach((btn) => {
+				btn.disabled = !state.spinning;
+			});
+		}
+
+		function vibrate(pattern) {
+			if (navigator.vibrate) {
+				navigator.vibrate(pattern);
+			}
+		}
+
+		function chooseOutcome(inRush) {
+			const multiplier = inRush ? 2 : 1;
+			const adjusted = BASE_PROBS.map((entry) => ({
+				symbol: entry.symbol,
+				p: entry.p * multiplier
+			}));
+			const winSum = adjusted.reduce((sum, item) => sum + item.p, 0);
+			const missProb = Math.max(0, 1 - winSum);
+			const table = [...adjusted, { symbol: null, p: missProb }];
+			let r = Math.random();
+			for (const item of table) {
+				r -= item.p;
+				if (r <= 0) {
+					if (!item.symbol) {
+						return { symbol: null, line: null };
+					}
+					return { symbol: item.symbol, line: Math.floor(Math.random() * 3) };
+				}
+			}
+			return { symbol: null, line: null };
+		}
+
+		function desiredRow(line, reelIndex) {
+			if (line === 0) return "middle";
+			if (line === 1) return ["top", "middle", "bottom"][reelIndex];
+			return ["bottom", "middle", "top"][reelIndex];
+		}
+
+		function findIndexForSymbol(strip, row, symbol) {
+			const matches = [];
+			for (let i = 0; i < strip.length; i += 1) {
+				const visible = getVisible(strip, i);
+				if (visible[row] === symbol) {
+					matches.push(i);
+				}
+			}
+			if (matches.length === 0) {
+				return Math.floor(Math.random() * strip.length);
+			}
+			return matches[Math.floor(Math.random() * matches.length)];
+		}
+
+		function hasWinningLine(indices) {
+			const visibles = state.reels.map((reel, i) => getVisible(reel.strip, indices[i]));
+			const line0 = [visibles[0].middle, visibles[1].middle, visibles[2].middle];
+			const line1 = [visibles[0].top, visibles[1].middle, visibles[2].bottom];
+			const line2 = [visibles[0].bottom, visibles[1].middle, visibles[2].top];
+			return [line0, line1, line2].some((line) => line.every((v) => v === line[0]));
+		}
+
+		function randomNonWinningIndices() {
+			for (let attempt = 0; attempt < 40; attempt += 1) {
+				const indices = state.reels.map((reel) => Math.floor(Math.random() * reel.strip.length));
+				if (!hasWinningLine(indices)) {
+					return indices;
+				}
+			}
+			return state.reels.map((reel) => Math.floor(Math.random() * reel.strip.length));
+		}
+
+		function startSpin() {
+			if (state.spinning) return;
+			if (state.inserted < 3) {
+				updateMessage("コイン3枚を投入してください。", true);
+				return;
+			}
+			state.spinning = true;
+			state.inserted = 0;
+			state.totalSpins += 1;
+			state.currentSpins += 1;
+
+			const inRush = state.rushRemaining > 0;
+			state.currentSpinRush = inRush;
+			if (state.rushRemaining > 0) {
+				state.rushRemaining -= 1;
+			}
+			document.body.classList.toggle("rush", state.rushRemaining > 0 || state.currentSpinRush);
+
+			state.outcome = chooseOutcome(inRush);
+			if (state.outcome.symbol) {
+				state.reels.forEach((reel, i) => {
+					const row = desiredRow(state.outcome.line, i);
+					reel.targetIndex = findIndexForSymbol(reel.strip, row, state.outcome.symbol);
+				});
+			} else {
+				const indices = randomNonWinningIndices();
+				state.reels.forEach((reel, i) => {
+					reel.targetIndex = indices[i];
+				});
+			}
+
+			state.reels.forEach((reel) => {
+				reel.stopped = false;
+				if (reel.interval) clearInterval(reel.interval);
+				reel.interval = setInterval(() => {
+					reel.index = (reel.index + 1) % reel.strip.length;
+					updateReels();
+				}, reel.speed);
+			});
+
+			updateMessage(inRush ? "RUSH中！当たり確率2倍。" : "抽選中...", false);
+			vibrate(inRush ? [60, 40, 60, 40, 120] : 30);
+			setButtonsEnabled();
+			updateCounters();
+
+			state.reels.forEach((reel, i) => {
+				setTimeout(() => {
+					if (!reel.stopped) stopReel(i);
+				}, 2400 + i * 500);
+			});
+		}
+
+		function stopReel(index) {
+			const reel = state.reels[index];
+			if (!state.spinning || reel.stopped) return;
+			reel.stopped = true;
+			clearInterval(reel.interval);
+			reel.interval = null;
+			reel.index = reel.targetIndex;
+			stopButtons[index].disabled = true;
+			updateReels();
+
+			if (state.reels.every((r) => r.stopped)) {
+				finishSpin();
+			}
+		}
+
+		function finishSpin() {
+			state.spinning = false;
+			stopButtons.forEach((btn) => (btn.disabled = true));
+
+			if (state.outcome && state.outcome.symbol) {
+				const symbol = state.outcome.symbol;
+				const payout = PAYOUTS[symbol] || 0;
+				state.coins += payout;
+				if (symbol === "⭐") {
+					state.bb += 1;
+				} else if (["🍒", "🍋", "🍉", "🔔"].includes(symbol)) {
+					state.rb += 1;
+				}
+				if (symbol === "7️⃣") {
+					state.rushRemaining = 10;
+					updateMessage("777当選！RUSH突入（10回転）", false);
+					vibrate([120, 40, 120, 40, 200]);
+				} else {
+					updateMessage(`${symbol} 当選！ +${payout} コイン`, false);
+					vibrate([40, 20, 40]);
+				}
+				state.currentSpins = 0;
+				elements.machine.classList.add("win");
+				setTimeout(() => elements.machine.classList.remove("win"), 600);
+			} else {
+				updateMessage("ハズレ... 次に期待。", false);
+			}
+
+			state.currentSpinRush = false;
+			updateCounters();
+			setButtonsEnabled();
+			document.body.classList.toggle("rush", state.rushRemaining > 0 || state.currentSpinRush);
+		}
+
+		function insertCoin() {
+			if (state.spinning) return;
+			if (state.coins <= 0) {
+				updateMessage("コインがありません。", true);
+				return;
+			}
+			if (state.inserted >= 3) return;
+			state.coins -= 1;
+			state.inserted += 1;
+			updateMessage(state.inserted === 3 ? "MAX BET！レバーを引いてください。" : "コインを投入しました。", false);
+			updateCounters();
+			setButtonsEnabled();
+		}
+
+		stopButtons.forEach((btn) => {
+			btn.addEventListener("click", () => stopReel(Number(btn.dataset.stop)));
+		});
+
+		elements.insertCoin.addEventListener("click", insertCoin);
+		elements.lever.addEventListener("click", startSpin);
+
+		initReels();
+		updateCounters();
+		setButtonsEnabled();
+	</script>
 </body>
 </html>
