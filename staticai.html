@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Story AI PoC (Fantasy, No LLM)</title>
+  <style>
+    :root{
+      --bg:#0b0f17; --panel:#121a2a; --text:#e7eefc; --muted:#9bb0d4;
+      --me:#2b63ff; --bot:#1b2a46; --border: rgba(255,255,255,.08);
+      --gold:#f6d57a;
+      --shadow: 0 12px 40px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: radial-gradient(1000px 600px at 10% 10%, #19264a 0%, transparent 60%),
+                  radial-gradient(900px 600px at 90% 20%, #2a1f4a 0%, transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      display:flex; justify-content:center; align-items:stretch;
+      min-height:100dvh;
+      padding:24px;
+    }
+    .app{
+      width:min(980px, 100%);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius:22px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      display:flex; flex-direction:column;
+    }
+    header{
+      padding:14px 18px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid var(--border);
+      background: rgba(0,0,0,.12);
+      backdrop-filter: blur(10px);
+      gap:12px;
+    }
+    header .left{display:flex; flex-direction:column; gap:3px}
+    header h1{font-size:14px; margin:0; letter-spacing:.3px}
+    header .sub{font-size:12px; color:var(--muted)}
+    header .pill{
+      display:flex; gap:10px; align-items:center;
+      font-size:12px; color:var(--muted);
+      border:1px solid var(--border);
+      padding:8px 10px; border-radius:14px;
+      background: rgba(255,255,255,.03);
+      white-space:nowrap;
+    }
+    header button{
+      background: transparent;
+      color: var(--muted);
+      border:1px solid var(--border);
+      padding:8px 10px;
+      border-radius:12px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    header button:hover{color:var(--text)}
+    .log{
+      flex:1;
+      padding:18px;
+      overflow:auto;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .row{display:flex; gap:10px; align-items:flex-end}
+    .row.me{justify-content:flex-end}
+    .bubble{
+      max-width:min(720px, 94%);
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid var(--border);
+      line-height:1.55;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font-size:14px;
+    }
+    .me .bubble{
+      background: linear-gradient(180deg, rgba(43,99,255,.85), rgba(43,99,255,.55));
+      border-color: rgba(43,99,255,.35);
+    }
+    .bot .bubble{
+      background: rgba(27,42,70,.72);
+    }
+    .meta{
+      font-size:11px;
+      color: var(--muted);
+      padding:0 4px 2px;
+      user-select:none;
+    }
+    .composer{
+      display:flex; gap:10px;
+      padding:14px;
+      border-top:1px solid var(--border);
+      background: rgba(0,0,0,.18);
+    }
+    textarea{
+      flex:1;
+      resize:none;
+      min-height:44px;
+      max-height:160px;
+      padding:11px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(10,14,22,.65);
+      color: var(--text);
+      outline:none;
+      line-height:1.4;
+      font-size:14px;
+    }
+    textarea::placeholder{color: rgba(231,238,252,.45)}
+    .send{
+      width:110px;
+      border-radius:14px;
+      border:1px solid rgba(246,213,122,.35);
+      background: rgba(246,213,122,.12);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:700;
+    }
+    .send:hover{background: rgba(246,213,122,.18)}
+    .hint{
+      padding:0 18px 14px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    kbd{
+      border:1px solid var(--border);
+      border-bottom-color: rgba(255,255,255,.18);
+      padding:2px 6px;
+      border-radius:7px;
+      font-size:11px;
+      color: var(--muted);
+      background: rgba(255,255,255,.04);
+    }
+    .typing{display:inline-flex; gap:5px; align-items:center}
+    .dot{
+      width:6px; height:6px; border-radius:999px;
+      background: rgba(231,238,252,.55);
+      animation: b 1.1s infinite ease-in-out;
+    }
+    .dot:nth-child(2){animation-delay:.15s}
+    .dot:nth-child(3){animation-delay:.3s}
+    @keyframes b{
+      0%, 80%, 100%{ transform: translateY(0); opacity:.45 }
+      40%{ transform: translateY(-4px); opacity:1 }
+    }
+    .gold{color:var(--gold)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="left">
+        <h1>物語AI PoC（ファンタジー / No LLM）</h1>
+        <div class="sub" id="sub">入力は自由文っぽく、内部は意図判定で進行します</div>
+      </div>
+      <div class="pill" id="statusPill">HP -- / 場所 -- / 所持品 --</div>
+      <button id="reset">最初から</button>
+    </header>
+
+    <div class="log" id="log"></div>
+
+    <div class="composer">
+      <textarea id="input" placeholder="行動を入力（例：調べる / 北へ行く / 話す / 剣を抜く / 持ち物 / 状態 / ヘルプ）"></textarea>
+      <button class="send" id="send">行動</button>
+    </div>
+    <div class="hint">
+      Enterで送信 / Shift+Enterで改行。
+      例：<kbd>見る</kbd> <kbd>調べる</kbd> <kbd>話す</kbd> <kbd>北</kbd> <kbd>攻撃</kbd> <kbd>持ち物</kbd> <kbd>状態</kbd> <kbd>ヘルプ</kbd>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $log = document.getElementById('log');
+  const $input = document.getElementById('input');
+  const $send = document.getElementById('send');
+  const $reset = document.getElementById('reset');
+  const $status = document.getElementById('statusPill');
+  const $sub = document.getElementById('sub');
+
+  // --- utils ---
+  const nowHM = () => new Date().toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const norm = (s) => (s || "").trim();
+  const includesAny = (s, arr) => arr.some(k => s.includes(k));
+
+  // --- storage ---
+  const KEY = "story_ai_poc_fantasy_v1";
+  const newGame = () => ({
+    turn: 0,
+    flags: {
+      metOracle: false,
+      tookMap: false,
+      gateUnlocked: false,
+      goblinDefeated: false,
+      hasKey: false,
+      torchLit: false,
+    },
+    player: {
+      name: null,
+      hp: 10,
+      maxHp: 10,
+      inv: ["古いコイン"],
+      weapon: null,
+    },
+    world: {
+      loc: "村はずれの石碑",
+      scene: "碑文が苔むした石碑。霧の森へ向かう小道が北に伸びる。",
+      enemy: null, // {id, name, hp}
+    },
+    memory: {
+      lastPlayerText: null,
+      lastSummary: null,
+      lastHint: null,
+    }
+  });
+
+  const load = () => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return newGame();
+      const g = JSON.parse(raw);
+      // minimal migration safety
+      if (!g || !g.player || !g.world) return newGame();
+      return g;
+    } catch {
+      return newGame();
+    }
+  };
+
+  const save = () => localStorage.setItem(KEY, JSON.stringify(game));
+  let game = load();
+
+  // --- UI helpers ---
+  const addBubble = ({who, text, meta}) => {
+    const row = document.createElement('div');
+    row.className = `row ${who}`;
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'meta';
+    metaEl.textContent = meta || nowHM();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    if (who === 'me') {
+      row.appendChild(bubble);
+      row.appendChild(metaEl);
+    } else {
+      row.appendChild(metaEl);
+      row.appendChild(bubble);
+    }
+
+    $log.appendChild(row);
+    $log.scrollTop = $log.scrollHeight;
+    return {row, bubble};
+  };
+
+  const addTyping = () => {
+    const row = document.createElement('div');
+    row.className = 'row bot';
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'meta';
+    metaEl.textContent = nowHM();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = `<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+
+    row.appendChild(metaEl);
+    row.appendChild(bubble);
+    $log.appendChild(row);
+    $log.scrollTop = $log.scrollHeight;
+
+    return {row};
+  };
+
+  const updateStatus = () => {
+    const hp = `${game.player.hp}/${game.player.maxHp}`;
+    const loc = game.world.loc;
+    const inv = game.player.inv.length ? game.player.inv.slice(0,3).join("、") + (game.player.inv.length>3 ? "…" : "") : "なし";
+    $status.textContent = `HP ${hp} / 場所 ${loc} / 所持品 ${inv}`;
+    save();
+  };
+
+  // --- tiny “AI-ish” reflection (not LLM, just flavor) ---
+  const summarize = (t) => {
+    const parts = t.split(/[。！？!\n]/).map(s=>s.trim()).filter(Boolean);
+    const head = parts.slice(0,2).join(" / ");
+    return head || t.slice(0, 40);
+  };
+
+  const setHint = (h) => {
+    game.memory.lastHint = h;
+    $sub.textContent = h;
+  };
+
+  // --- intent parsing ---
+  const parseIntent = (t) => {
+    const s = norm(t);
+    const low = s; // Japanese mostly
+    const is = (...keys) => keys.some(k => low.includes(k));
+
+    // direction
+    if (is("北", "北へ", "森", "霧の森", "小道")) return {type:"move", dir:"north"};
+    if (is("南", "南へ", "村", "戻る")) return {type:"move", dir:"south"};
+    if (is("東", "東へ")) return {type:"move", dir:"east"};
+    if (is("西", "西へ")) return {type:"move", dir:"west"};
+
+    if (is("見る", "眺める", "観察", "周り", "状況")) return {type:"look"};
+    if (is("調べる", "探索", "探す", "触る")) return {type:"inspect"};
+    if (is("話す", "会話", "呼ぶ")) return {type:"talk"};
+    if (is("攻撃", "斬る", "殴る", "戦う", "剣", "突く")) return {type:"attack"};
+    if (is("逃げる", "退く", "回避")) return {type:"flee"};
+    if (is("持ち物", "インベントリ")) return {type:"inv"};
+    if (is("状態", "ステータス", "hp")) return {type:"status"};
+    if (is("ヘルプ", "help", "使い方")) return {type:"help"};
+    if (is("最初", "リセット")) return {type:"reset"};
+
+    // item usage (rough)
+    if (is("使う", "灯す", "火", "たいまつ", "松明")) return {type:"use", item:"torch"};
+    if (is("鍵", "キー")) return {type:"use", item:"key"};
+
+    return {type:"free"};
+  };
+
+  // --- world logic ---
+  const describeLocation = () => {
+    const base = `【${game.world.loc}】\n${game.world.scene}`;
+    if (game.world.enemy) {
+      return base + `\n\n⚠️ 近くに「${game.world.enemy.name}」がいる（HP ${game.world.enemy.hp}）。`;
+    }
+    return base;
+  };
+
+  const spawnEnemyIfNeeded = () => {
+    if (game.world.loc === "霧の森の入口" && !game.flags.goblinDefeated && !game.world.enemy) {
+      game.world.enemy = {id:"goblin", name:"霧ゴブリン", hp: 6};
+      return true;
+    }
+    return false;
+  };
+
+  const move = (dir) => {
+    // simple map:
+    // south: 村はずれの石碑
+    // north: 霧の森の入口 -> (east) 朽ちた門 -> (north) 古い祠
+    // (west) 泉
+    const loc = game.world.loc;
+
+    if (dir === "north") {
+      if (loc === "村はずれの石碑") {
+        game.world.loc = "霧の森の入口";
+        game.world.scene = "霧が濃い。木々の間から、何かの気配がこちらを窺っている。東に朽ちた門、西に小さな泉。南は村への道。";
+        setHint("霧の森だ。まずは「見る」「調べる」「話す」「東へ」「西へ」あたりで進む。");
+        return;
+      }
+      if (loc === "朽ちた門") {
+        if (!game.flags.gateUnlocked) {
+          setHint("門は閉ざされている。どこかに鍵が必要そうだ。");
+          return;
+        }
+        game.world.loc = "古い祠";
+        game.world.scene = "苔むした祠。中央に石の台座があり、淡く光る欠片が置かれている。";
+        setHint("祠だ。「調べる」で台座を見ると進みそう。");
+        return;
+      }
+      setHint("北には進めそうにない。別の方向を試して。");
+      return;
+    }
+
+    if (dir === "south") {
+      if (loc === "霧の森の入口") {
+        game.world.loc = "村はずれの石碑";
+        game.world.scene = "碑文が苔むした石碑。霧の森へ向かう小道が北に伸びる。";
+        setHint("石碑に戻った。「調べる」で碑文を読むのもあり。");
+        return;
+      }
+      setHint("南はこれ以上進めない。");
+      return;
+    }
+
+    if (dir === "east") {
+      if (loc === "霧の森の入口") {
+        game.world.loc = "朽ちた門";
+        game.world.scene = "古い門が霧の中に沈んでいる。錠前はまだ生きているようだ。西が森の入口。";
+        setHint("門だ。「調べる」で錠前を確認できる。鍵があるなら「鍵を使う」でも。");
+        return;
+      }
+      setHint("東には道がない。");
+      return;
+    }
+
+    if (dir === "west") {
+      if (loc === "霧の森の入口") {
+        game.world.loc = "泉";
+        game.world.scene = "小さな泉。水面に月のような光が揺れる。石の下に何かが挟まっている。東が森の入口。";
+        setHint("泉だ。「調べる」で石の下を見られそう。");
+        return;
+      }
+      setHint("西には道がない。");
+      return;
+    }
+  };
+
+  const inspect = () => {
+    const loc = game.world.loc;
+
+    if (loc === "村はずれの石碑") {
+      const txt = [
+        "碑文には、古い言葉でこう刻まれている。",
+        "『霧の森に入る者よ。光なき者は道を失う。泉の月影に“鍵”は眠る。』"
+      ].join("\n");
+      if (!game.flags.tookMap) {
+        game.flags.tookMap = true;
+        game.player.inv.push("粗末な地図");
+        setHint("碑文がヒントになった。北へ進むとイベントが起きる。");
+        return txt + "\n\n足元に落ちていた「粗末な地図」を拾った。";
+      }
+      setHint("碑文のヒントは既に読んだ。次は北へ。");
+      return txt;
+    }
+
+    if (loc === "霧の森の入口") {
+      if (spawnEnemyIfNeeded()) {
+        setHint("敵が現れた。「話す」か「攻撃」か「逃げる」で反応。");
+        return "霧の奥から、黄緑の目が覗いた。\n「霧ゴブリン」が現れた。";
+      }
+      setHint("霧が濃い。東の門か西の泉へ進めそう。");
+      return "木々の間に足跡。霧の流れが不自然だ…何かが潜んでいた気配がある。";
+    }
+
+    if (loc === "泉") {
+      if (!game.flags.hasKey) {
+        game.flags.hasKey = true;
+        game.player.inv.push("古い鍵");
+        setHint("鍵を手に入れた。東→門で「鍵を使う」。");
+        return "石の下に指を差し入れると、冷たい金属の感触。\n「古い鍵」を手に入れた。";
+      }
+      setHint("泉は静かだ。門へ戻ろう。");
+      return "泉の水は澄んでいる。今は特に見つからない。";
+    }
+
+    if (loc === "朽ちた門") {
+      if (game.flags.gateUnlocked) {
+        setHint("門は開いた。北へ進める。");
+        return "錠前は外れている。門の向こうへ進めそうだ。";
+      }
+      setHint("鍵が必要。泉で手に入るはず。");
+      return "錠前は頑丈だ。鍵穴には古い紋章。鍵が必要だ。";
+    }
+
+    if (loc === "古い祠") {
+      if (!game.flags.metOracle) {
+        game.flags.metOracle = true;
+        setHint("祠の台座が怪しい。「調べる」で進行（もう一度）。");
+        return "祠の空気が変わる。どこからか声が落ちてくる。\n「…選びなさい。力か、真実か。」";
+      }
+      // second inspect at shrine
+      if (!game.flags.torchLit) {
+        setHint("暗い。たいまつが欲しい…（今は未実装だけど、後で追加できる）");
+      }
+      return "台座の欠片は淡く脈動している。触れれば何かが起きそうだ。";
+    }
+
+    setHint("特に調べるものはなさそう。別の行動を。");
+    return "周囲を探るが、目立ったものはない。";
+  };
+
+  const talk = () => {
+    if (game.world.enemy?.id === "goblin") {
+      setHint("交渉か戦闘。『帰れ』とか『何が目的？』みたいに言うと分岐を増やせる。");
+      return pick([
+        "霧ゴブリンは舌打ちする。「人間は、光を持ち込む…嫌いだ」",
+        "霧ゴブリンは鼻で笑う。「門の向こう？　鍵がいる。だが…泉は見たか？」",
+        "霧ゴブリンは首を傾げる。「お前、何を探す？」"
+      ]);
+    }
+    if (game.world.loc === "古い祠") {
+      setHint("声に返事してみて。『力』『真実』など。");
+      return "祠の奥から、声が再び響く。\n「答えよ。汝は何を望む？」";
+    }
+    setHint("誰かに話すなら、場所を変えるのも手。");
+    return "声をかけたが、返事はない。";
+  };
+
+  const attack = () => {
+    const e = game.world.enemy;
+    if (!e) {
+      setHint("敵がいない。まずは探索。");
+      return "剣を振るうが、空を切るだけだ。";
+    }
+
+    // player attack
+    const dmg = 2 + (game.player.weapon ? 1 : 0);
+    e.hp -= dmg;
+
+    if (e.hp <= 0) {
+      game.world.enemy = null;
+      game.flags.goblinDefeated = true;
+      setHint("敵を倒した。泉か門へ進むと良さそう。");
+      return `あなたは一撃を叩き込んだ（${dmg}ダメージ）。\n霧ゴブリンは霧に溶けて消えた。`;
+    }
+
+    // enemy counter
+    const edmg = pick([1,1,2]);
+    game.player.hp = Math.max(0, game.player.hp - edmg);
+
+    if (game.player.hp <= 0) {
+      setHint("倒れた…。「最初から」で再開できる。");
+      return `あなたは攻撃した（${dmg}ダメージ）。\n霧ゴブリンの反撃（${edmg}ダメージ）。\n\n視界が暗転する……`;
+    }
+
+    setHint("戦闘中。『逃げる』も可能。");
+    return `あなたは攻撃した（${dmg}ダメージ）。\n霧ゴブリンの反撃（${edmg}ダメージ）。\n霧ゴブリンHP: ${e.hp}`;
+  };
+
+  const flee = () => {
+    if (!game.world.enemy) {
+      setHint("今は逃げる必要はなさそう。");
+      return "あなたは周囲を見回し、深呼吸した。";
+    }
+    // simple escape chance
+    const ok = Math.random() < 0.75;
+    if (ok) {
+      game.world.enemy = null;
+      setHint("逃げ切った。泉か門へ進むと良い。");
+      return "あなたは霧を裂くように後退し、敵の視界から抜け出した。";
+    }
+    // failed escape => small damage
+    game.player.hp = Math.max(0, game.player.hp - 1);
+    setHint("逃げ損ねた。次は『攻撃』か『話す』。");
+    return "足を取られた。霧ゴブリンの爪がかすめる（1ダメージ）。";
+  };
+
+  const useItem = (item) => {
+    if (item === "key") {
+      if (!game.player.inv.includes("古い鍵")) {
+        setHint("鍵を持っていない。泉で取れる。");
+        return "鍵が見当たらない。";
+      }
+      if (game.world.loc !== "朽ちた門") {
+        setHint("鍵は門で使う。");
+        return "鍵を握るが、使うべき錠前がない。";
+      }
+      game.flags.gateUnlocked = true;
+      setHint("門が開いた。北へ進める。");
+      return "鍵がカチリと鳴り、錠前がほどけた。\n朽ちた門が、ゆっくり開く。";
+    }
+
+    if (item === "torch") {
+      if (!game.player.inv.includes("たいまつ")) {
+        setHint("たいまつはまだ手に入らない（次の追加要素）。");
+        return "たいまつがない。";
+      }
+      game.flags.torchLit = true;
+      setHint("火が灯った。暗所イベントを追加しよう。");
+      return "火が灯り、霧の濃淡がくっきり見える。";
+    }
+
+    setHint("それは今使えない。");
+    return "うまく使えない。";
+  };
+
+  const help = () => {
+    setHint("コマンド例：見る / 調べる / 話す / 北へ / 東へ / 西へ / 攻撃 / 逃げる / 持ち物 / 状態");
+    return [
+      "できる行動（例）",
+      "- 見る：今いる場所の描写",
+      "- 調べる：イベント進行（重要）",
+      "- 話す：NPC/敵/声と対話",
+      "- 北/南/東/西：移動",
+      "- 攻撃/逃げる：戦闘関連",
+      "- 持ち物：所持品を見る",
+      "- 状態：HPなどを見る",
+    ].join("\n");
+  };
+
+  const showInv = () => {
+    setHint("アイテムを使うなら『鍵を使う』みたいに入力。");
+    return game.player.inv.length
+      ? "所持品：\n- " + game.player.inv.join("\n- ")
+      : "所持品は空だ。";
+  };
+
+  const showStatus = () => {
+    setHint("物語を進めるなら、まずは探索（調べる）から。");
+    return `HP ${game.player.hp}/${game.player.maxHp}\n場所 ${game.world.loc}\n直近の行動：${game.memory.lastSummary || "—"}`;
+  };
+
+  const look = () => {
+    setHint("進行は『調べる』が強い。詰まったら『ヘルプ』。");
+    return describeLocation();
+  };
+
+  const gameOverCheck = () => {
+    if (game.player.hp <= 0) return true;
+    return false;
+  };
+
+  const step = (playerText) => {
+    const t = norm(playerText);
+    game.turn++;
+    game.memory.lastPlayerText = t;
+    game.memory.lastSummary = summarize(t);
+
+    const intent = parseIntent(t);
+
+    // special
+    if (intent.type === "reset") return {out:"了解。最初から始めよう。", reset:true};
+
+    if (gameOverCheck()) {
+      setHint("あなたは倒れている。『最初から』で再開。");
+      return {out:"……返事がない。あなたは倒れている。", reset:false};
+    }
+
+    // main
+    let out = "";
+    switch (intent.type) {
+      case "look": out = look(); break;
+      case "inspect": out = inspect(); break;
+      case "talk": out = talk(); break;
+      case "attack": out = attack(); break;
+      case "flee": out = flee(); break;
+      case "move": move(intent.dir); out = describeLocation(); spawnEnemyIfNeeded(); break;
+      case "use": out = useItem(intent.item); break;
+      case "inv": out = showInv(); break;
+      case "status": out = showStatus(); break;
+      case "help": out = help(); break;
+      default:
+        // free text: add “AI-ish” nudge
+        out = pick([
+          `（あなたの意図：${game.memory.lastSummary}）\n今は「見る」「調べる」「話す」「移動」が効きそうだ。`,
+          `了解。「${game.memory.lastSummary}」だね。\n状況を動かすなら「調べる」が良さそう。`,
+          `その行動は曖昧だ。\n試しに「調べる」か「見る」、または「北/東/西」で移動してみて。`
+        ]);
+        setHint("自由文もOK。ただし進行は意図判定に寄る。");
+        break;
+    }
+
+    updateStatus();
+    return {out, reset:false};
+  };
+
+  // --- bot typing ---
+  const botSay = async (text) => {
+    const typing = addTyping();
+    const base = 380;
+    const perChar = 14;
+    const ms = clamp(base + text.length * perChar, 450, 1500);
+    await sleep(ms);
+    typing.row.remove();
+    addBubble({who:'bot', text});
+  };
+
+  const userSay = (text) => addBubble({who:'me', text});
+
+  const start = async () => {
+    updateStatus();
+    const intro = [
+      "霧が低く垂れこめる夜。あなたは村はずれの石碑の前に立っている。",
+      "北には「霧の森」へ続く小道。空気は冷たく、静かだ。",
+      "",
+      "（まずは「見る」か「調べる」がおすすめ）"
+    ].join("\n");
+    await botSay(intro);
+    $input.focus();
+  };
+
+  const send = async () => {
+    const t = norm($input.value);
+    if (!t) return;
+    $input.value = "";
+    userSay(t);
+
+    const {out, reset:doReset} = step(t);
+
+    if (doReset) {
+      game = newGame();
+      localStorage.setItem(KEY, JSON.stringify(game));
+      updateStatus();
+      await botSay(out);
+      await botSay("……世界が巻き戻る。");
+      await botSay("あなたは再び、村はずれの石碑の前に立っている。\n（「見る」か「調べる」）");
+      return;
+    }
+
+    await botSay(out);
+  };
+
+  // events
+  $send.addEventListener('click', send);
+  $input.addEventListener('keydown', (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+  $reset.addEventListener('click', async () => {
+    game = newGame();
+    localStorage.setItem(KEY, JSON.stringify(game));
+    $log.innerHTML = "";
+    updateStatus();
+    setHint("リセットしました。「見る」か「調べる」から。");
+    await start();
+  });
+
+  // auto-resize textarea
+  const resize = () => {
+    $input.style.height = "0px";
+    $input.style.height = clamp($input.scrollHeight, 44, 160) + "px";
+  };
+  $input.addEventListener('input', resize);
+
+  start();
+})();
+</script>
+</body>
+</html>
