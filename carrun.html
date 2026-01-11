@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FC Runner - Fuel</title>
+  <style>
+    body { margin:0; background:#111; display:grid; place-items:center; height:100vh; color:#ddd; font-family: system-ui, -apple-system, sans-serif; }
+    canvas{
+      width: 768px; height: 720px; /* 256*3, 240*3 */
+      image-rendering: pixelated;
+      border: 2px solid #333;
+      background:#000;
+      touch-action: none;
+    }
+    .hint{ margin-top:10px; font-size:14px; opacity:.8; }
+  </style>
+</head>
+<body>
+  <div>
+    <canvas id="c" width="256" height="240"></canvas>
+  <div class="hint">← → / A D：レーン移動　タップ/スワイプ：左右　R：リスタート</div>
+  </div>
+
+<script>
+const W=256, H=240;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d", { alpha:false });
+ctx.imageSmoothingEnabled = false;
+
+const keys = new Set();
+addEventListener("keydown", e => keys.add(e.key));
+addEventListener("keyup", e => keys.delete(e.key));
+
+const touch = {
+  activeId: null,
+  startX: 0,
+  startY: 0,
+  moved: false
+};
+
+function pointerToCanvas(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) * (W / rect.width)) | 0;
+  const y = ((e.clientY - rect.top) * (H / rect.height)) | 0;
+  return { x, y };
+}
+
+canvas.addEventListener("pointerdown", e => {
+  if (touch.activeId !== null) return;
+  const p = pointerToCanvas(e);
+  touch.activeId = e.pointerId;
+  touch.startX = p.x;
+  touch.startY = p.y;
+  touch.moved = false;
+});
+
+canvas.addEventListener("pointermove", e => {
+  if (touch.activeId !== e.pointerId || touch.moved) return;
+  const p = pointerToCanvas(e);
+  const dx = p.x - touch.startX;
+  const dy = p.y - touch.startY;
+  if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy)) {
+    moveLane(dx < 0 ? -1 : 1);
+    touch.moved = true;
+  }
+});
+
+canvas.addEventListener("pointerup", e => {
+  if (touch.activeId !== e.pointerId) return;
+  if (!touch.moved) {
+    const p = pointerToCanvas(e);
+    moveLane(p.x < W/2 ? -1 : 1);
+  }
+  touch.activeId = null;
+});
+canvas.addEventListener("pointercancel", () => { touch.activeId = null; });
+
+const lanes = [64, 128, 192]; // 3レーンの中心X
+const roadTop = 40;
+
+let state;
+
+function reset(){
+  state = {
+    t: 0,
+    running: true,
+    score: 0,
+    speed: 80,              // px/sec（物体の落下速度）
+    spawnTimer: 0,
+    spawnMin: 0.55,         // 生成間隔（秒）
+    spawnMax: 1.05,
+    lastBarricadeLane: -1,
+    fuel: 100,              // 0-100
+    car: { lane: 1, w: 14, h: 18, y: 190 },
+    objs: [],               // {type:'b'|'f', lane, x, y, w, h}
+    gasPityTimer: 0,        // ガソリンが出ない時間（救済）
+    lastSpawnType: "b",
+    roadScroll: 0,
+    invincible: 0,
+    barricadeBoost: 1,
+    nextBoostScore: 200,
+    boostTimer: 0,
+    popups: []
+  };
+  scheduleNextSpawn();
+}
+
+function scheduleNextSpawn(){
+  state.spawnTimer = rand(state.spawnMin, state.spawnMax);
+}
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+function randi(n){ return (Math.random()*n)|0; }
+
+function spawn(){
+  // 生成タイプ：基本はバリケード多め、燃料は時々＋救済
+  const fuelChanceBase = Math.max(0.08, 0.22 - state.t * 0.01);
+  const fuelChance = Math.min(0.35, fuelChanceBase / state.barricadeBoost);
+  let wantFuel =
+    state.gasPityTimer > 3.0 || Math.random() < fuelChance; // 出ない時間が長いなら強制
+  if (wantFuel && state.lastSpawnType === "f" && state.gasPityTimer < 3.0){
+    wantFuel = false;
+  }
+
+  const lane = pickLane(wantFuel ? null : state.lastBarricadeLane);
+
+  if (wantFuel){
+    state.objs.push({ type:'f', lane, x: lanes[lane], y: roadTop-12, w: 10, h: 12 });
+    state.gasPityTimer = 0;
+    state.lastSpawnType = "f";
+  } else {
+    spawnBarricade(lane);
+    state.lastSpawnType = "b";
+  }
+
+  // 後半はバリケードを追加生成（燃料量は維持）
+  if (state.t > 40 && Math.random() < 0.2){
+    const extraLane = pickLane(state.lastBarricadeLane);
+    spawnBarricade(extraLane);
+  }
+  scheduleNextSpawn();
+}
+
+function spawnBarricade(lane){
+  state.objs.push({ type:'b', lane, x: lanes[lane], y: roadTop-14, w: 16, h: 14 });
+  state.lastBarricadeLane = lane;
+}
+
+function pickLane(avoidLane){
+  // avoidLane があるなら、同一レーン連打を抑える
+  let lane = randi(3);
+  if (avoidLane === null || avoidLane === undefined) return lane;
+
+  if (lane === avoidLane){
+    lane = (lane + 1 + randi(2)) % 3; // 違うレーンにずらす
+  }
+  return lane;
+}
+
+function aabb(ax,ay,aw,ah,bx,by,bw,bh){
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
+
+function update(dt){
+  if (!state.running){
+    if (keys.has("r") || keys.has("R")) reset();
+    return;
+  }
+
+  // 入力（レーン移動は「押しっぱなし連打」にならないようエッジ検出でも良いが簡略）
+  if (consumeKey("ArrowLeft") || consumeKey("a") || consumeKey("A")) moveLane(-1);
+  if (consumeKey("ArrowRight")|| consumeKey("d") || consumeKey("D")) moveLane(1);
+
+  // スコア（生存時間）
+  state.score += dt * 10;
+
+  // 200スコアごとのブースト演出
+  if (state.score >= state.nextBoostScore){
+    state.boostTimer = 0.6;
+    while (state.score >= state.nextBoostScore){
+      state.nextBoostScore += 200;
+    }
+  }
+
+  // 道路スクロール（レーン線）
+  state.roadScroll += state.speed * dt;
+
+  // スポーン
+  state.spawnTimer -= dt;
+  state.gasPityTimer += dt;
+  if (state.spawnTimer <= 0) spawn();
+
+  // 無敵時間
+  if (state.invincible > 0){
+    state.invincible = Math.max(0, state.invincible - dt);
+  }
+  if (state.boostTimer > 0){
+    state.boostTimer = Math.max(0, state.boostTimer - dt);
+  }
+
+  // オブジェクト移動
+  for (const o of state.objs){
+    o.y += state.speed * dt;
+  }
+  // 画面外除去
+  state.objs = state.objs.filter(o => o.y < H + 30);
+
+  // 当たり判定
+  const carX = (lanes[state.car.lane] - state.car.w/2) | 0;
+  const carY = state.car.y;
+  for (let i=state.objs.length-1; i>=0; i--){
+    const o = state.objs[i];
+    const ox = (o.x - o.w/2) | 0;
+    const oy = o.y | 0;
+
+    if (aabb(carX,carY,state.car.w,state.car.h, ox,oy,o.w,o.h)){
+      if (o.type === 'b'){
+        if (state.invincible <= 0){
+          state.fuel = Math.max(0, state.fuel - 25);
+          state.invincible = 1.0;
+          state.objs.splice(i,1);
+          if (state.fuel <= 0){
+            state.running = false;
+          }
+        }
+      } else {
+        // fuel
+        const gain = 25 + randi(11);
+        state.fuel = Math.min(100, state.fuel + gain);
+        state.score += 300;
+        state.popups.push({ x: o.x|0, y: o.y|0, vy: -20, ttl: 0.8, text: "+300", color: "#e35a5a" });
+        state.objs.splice(i,1);
+      }
+    }
+  }
+
+  // 徐々に難しく（速度UP / 燃料消費UP / スポーン短縮）
+  const t = state.t += dt;
+  if (t > 0){
+    state.speed = 80 + Math.min(420, t * 3);             // max +420
+    const spawnBoost = Math.min(1.5, t * 0.02);
+    state.barricadeBoost = 1 + Math.min(0.5, t * 0.01);
+    const densityBoost = Math.min(4.4, state.speed / 80);
+    const spawnScale = 1 / ((1 + spawnBoost) * state.barricadeBoost * densityBoost); // バリケード量を線形に増やす
+    const minFloor = Math.max(0.16, 0.32 - t * 0.0012);
+    const maxFloor = Math.max(0.32, 0.55 - t * 0.0012);
+    state.spawnMin = Math.max(minFloor, (0.55 - t*0.003) * spawnScale);
+    state.spawnMax = Math.max(maxFloor, (1.05 - t*0.004) * spawnScale);
+  }
+
+  // ポップアップ更新
+  for (const p of state.popups){
+    p.y += p.vy * dt;
+    p.ttl -= dt;
+  }
+  state.popups = state.popups.filter(p => p.ttl > 0);
+}
+
+function moveLane(dir){
+  state.car.lane = Math.max(0, Math.min(2, state.car.lane + dir));
+}
+
+// 押下を1回として消費（簡易エッジ）
+const once = new Set();
+function consumeKey(k){
+  if (keys.has(k)){
+    if (!once.has(k)){ once.add(k); return true; }
+  } else {
+    once.delete(k);
+  }
+  return false;
+}
+
+function draw(){
+  // 背景
+  ctx.fillStyle = "#0b1020";
+  ctx.fillRect(0,0,W,H);
+
+  // HUD
+  ctx.fillStyle = "#111a3a";
+  ctx.fillRect(0,0,W,roadTop);
+
+  // 燃料バー
+  ctx.fillStyle = "#88d";
+  const fuelW = (state.fuel/100 * 120) | 0;
+  ctx.fillStyle = "#2a6";
+  ctx.fillRect(10, 10, fuelW, 6);
+  ctx.strokeStyle = "#5a6";
+  ctx.strokeRect(10, 10, 120, 6);
+
+  // スコア
+  ctx.fillStyle = "#9ad";
+  ctx.font = "8px monospace";
+  ctx.fillText(`SCORE ${(state.score|0).toString().padStart(5,"0")}`, 150, 16);
+  ctx.fillText(`LIFE ${(state.fuel|0).toString().padStart(3,"0")}`, 10, 28);
+
+  // 道路周辺
+  ctx.fillStyle = "#0b1f18";
+  ctx.fillRect(0, roadTop, W, H-roadTop);
+
+  // 道路（わずかに狭まる台形）
+  const roadInsetTop = 8;
+  ctx.fillStyle = "#0f2a22";
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  ctx.lineTo(W, H);
+  ctx.lineTo(W - roadInsetTop, roadTop);
+  ctx.lineTo(roadInsetTop, roadTop);
+  ctx.closePath();
+  ctx.fill();
+
+  // 道路エッジ
+  ctx.strokeStyle = "#1f3a32";
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  ctx.lineTo(roadInsetTop, roadTop);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(W, H);
+  ctx.lineTo(W - roadInsetTop, roadTop);
+  ctx.stroke();
+
+  // レーン線（点線っぽく）
+  ctx.fillStyle = "#1c4b3f";
+  const dashOffset = (state.roadScroll % 12) | 0;
+  for (let y=roadTop + dashOffset; y<H; y+=12){
+    ctx.fillRect( (W/3)|0, y, 2, 6);
+    ctx.fillRect( (2*W/3)|0, y, 2, 6);
+  }
+
+  // オブジェクト
+  for (const o of state.objs){
+    if (o.type === 'b'){
+      ctx.fillStyle = "#edc84a";
+      const x = (o.x - o.w/2)|0, y=(o.y|0);
+      ctx.fillRect(x, y, o.w, o.h);
+      // 縞模様
+      ctx.fillStyle = "#111";
+      for (let sy=1; sy<o.h; sy+=4){
+        ctx.fillRect(x, y+sy, o.w, 2);
+      }
+    } else {
+      ctx.fillStyle = "#d55";
+      const x = (o.x - o.w/2)|0, y=(o.y|0);
+      ctx.fillRect(x, y, o.w, o.h);
+      ctx.fillStyle = "#2b2b2b";
+      ctx.fillRect(x+3, y+3, 4, 2);
+      ctx.fillStyle = "#f2f2f2";
+      ctx.fillRect(x+(o.w/2|0)-1, y-6, 2, 6);
+      ctx.fillRect(x+(o.w/2|0)-1, y-6, 8, 2);
+    }
+  }
+
+  // 車（プレイヤー）
+  const carX = (lanes[state.car.lane] - state.car.w/2)|0;
+  const bounce = state.boostTimer > 0 ? Math.round(Math.sin(state.t * 24) * 4) : 0;
+  const carY = (state.car.y + bounce)|0;
+  const blink = state.invincible > 0 && (((state.t * 12) | 0) % 2 === 0);
+  if (!blink){
+    ctx.fillStyle = "#e6e6e6";
+    ctx.fillRect(carX, carY, state.car.w, state.car.h);
+    ctx.fillStyle = "#444";
+    ctx.fillRect(carX+2, carY+3, state.car.w-4, 3);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(carX-2, carY+2, 3, 4);
+    ctx.fillRect(carX+state.car.w-1, carY+2, 3, 4);
+    ctx.fillRect(carX-2, carY+state.car.h-6, 3, 4);
+    ctx.fillRect(carX+state.car.w-1, carY+state.car.h-6, 3, 4);
+  }
+
+  // ブースト煙（マフラー）
+  if (state.boostTimer > 0){
+    const smokeX = carX + ((state.car.w / 2) | 0) - 1;
+    const smokeY = carY + state.car.h - 1;
+    const puff = ((state.boostTimer * 60) | 0) % 3;
+    ctx.fillStyle = "#c9c9c9";
+    ctx.fillRect(smokeX, smokeY + puff, 2, 2);
+    ctx.fillRect(smokeX - 1, smokeY + puff + 3, 2, 2);
+    ctx.fillRect(smokeX + 1, smokeY + puff + 6, 2, 2);
+  }
+
+  // ライフ増減ポップアップ
+  ctx.font = "8px monospace";
+  for (const p of state.popups){
+    const a = Math.max(0, Math.min(1, p.ttl / 0.8));
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = a;
+    ctx.fillText(p.text, (p.x|0) - 6, (p.y|0));
+    ctx.globalAlpha = 1;
+  }
+
+  // Game Over
+  if (!state.running){
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = "#fff";
+    ctx.font = "12px monospace";
+    ctx.fillText("GAME OVER", 78, 110);
+    ctx.font = "8px monospace";
+    ctx.fillText(`SCORE ${(state.score|0)}`, 92, 128);
+    ctx.fillText("Press R to Restart", 70, 144);
+  }
+}
+
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.033, (now-last)/1000); // 最大33msに制限
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
