@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>読みやすさメータ</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      max-width: 900px;
+      margin: 24px auto;
+      padding: 0 16px;
+      line-height: 1.6;
+    }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .hint { opacity: .75; font-size: 12px; margin-bottom: 16px; }
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(127,127,127,.35);
+      outline: none;
+      font-size: 14px;
+      resize: vertical;
+    }
+    .panel {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(127,127,127,.25);
+      background: rgba(127,127,127,.06);
+    }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .label { font-weight: 600; }
+    .badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(127,127,127,.35);
+      opacity: .9;
+    }
+
+    .barWrap {
+      height: 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(127,127,127,.35);
+      overflow: hidden;
+      margin-top: 10px;
+      background: rgba(127,127,127,.08);
+    }
+    .bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      transition: width 120ms linear, filter 120ms linear;
+      background: hsl(120 70% 45%);
+    }
+
+    details { margin-top: 10px; }
+    summary { cursor: pointer; font-size: 13px; opacity: .9; }
+    .stats {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      font-size: 13px;
+      opacity: .9;
+    }
+    .stat {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(127,127,127,.25);
+      background: rgba(127,127,127,.05);
+    }
+    .muted { opacity: .7; font-size: 12px; margin-top: 8px; }
+    .btnRow { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(127,127,127,.35);
+      background: rgba(127,127,127,.10);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { filter: brightness(1.05); }
+  </style>
+</head>
+<body>
+  <h1>読みやすさメータ</h1>
+  <div class="hint">
+    文章の「読み手の負荷」をざっくり推定して、読みやすさ(0〜100%)に変換します（診断ではありません）。
+  </div>
+
+  <textarea id="input" placeholder="ここに文章を書いてください。改行もOK。"></textarea>
+
+  <div class="panel">
+    <div class="row">
+      <div class="label">読みやすさ</div>
+      <div id="state" class="badge">—</div>
+      <div class="badge"><span id="pct">0</span>%</div>
+    </div>
+
+    <div class="barWrap" aria-label="読みやすさバー">
+      <div id="bar" class="bar"></div>
+    </div>
+
+    <div class="btnRow">
+      <button id="clearBtn" type="button">クリア</button>
+      <button id="copyBtn" type="button">共有用テキストをコピー</button>
+    </div>
+
+    <details>
+      <summary>内訳（調整用）</summary>
+      <div class="stats">
+        <div class="stat">文字数: <b id="chars">0</b></div>
+        <div class="stat">行数: <b id="lines">0</b></div>
+        <div class="stat">文数（。！？）: <b id="sentences">0</b></div>
+        <div class="stat">平均文長: <b id="avgSentLen">0</b></div>
+        <div class="stat">読点（、）: <b id="commas">0</b></div>
+        <div class="stat">接続語: <b id="conj">0</b></div>
+        <div class="stat">抽象語: <b id="abs">0</b></div>
+        <div class="stat">長文ペナルティ: <b id="longPenalty">0</b></div>
+      </div>
+      <div class="muted">※「読みやすさ」は高いほど良い。重みはJS内の weights / 閾値を調整してください。</div>
+    </details>
+  </div>
+
+  <script>
+    // ====== 語彙（読みやすさの「構造負荷」寄り） ======
+    const WORDS = {
+      conjunctions: [
+        "しかし","そして","つまり","なぜなら","けれど","だから","一方で","また","ただ","なので","ところが","それでも",
+        "例えば","要するに","ちなみに","なお","結局","まず","次に"
+      ],
+      abstractWords: [
+        "こと","もの","感じ","状態","気持ち","自分","本質","価値","理由","意味","問題","要素","構造","観点","前提"
+      ]
+    };
+
+    // ====== 読みやすさ用の重み（“読者の処理負荷”をペナルティ化） ======
+    const weights = {
+      commas: 0.9,        // 読点が多いと情報が詰まっていることが多い
+      conjunction: 2.2,   // 接続語は構造が複雑になりがち
+      abstract: 2.8       // 抽象語は意味解釈を要求しがち
+    };
+
+    // ====== 文長の基準（ここが肝） ======
+    const SENTENCE_SOFT_LIMIT = 45; // ここを超えると「少し読みにくい」寄り
+    const SENTENCE_HARD_LIMIT = 70; // ここを超えると「かなり読みにくい」寄り
+
+    // 0〜100に変換するためのペナルティ上限（大きいほど読みやすさが落ちにくい）
+    const PENALTY_MAX = 120;
+
+    const el = {
+      input: document.getElementById("input"),
+      bar: document.getElementById("bar"),
+      pct: document.getElementById("pct"),
+      state: document.getElementById("state"),
+
+      chars: document.getElementById("chars"),
+      lines: document.getElementById("lines"),
+      sentences: document.getElementById("sentences"),
+      avgSentLen: document.getElementById("avgSentLen"),
+      commas: document.getElementById("commas"),
+      conj: document.getElementById("conj"),
+      abs: document.getElementById("abs"),
+      longPenalty: document.getElementById("longPenalty"),
+
+      clearBtn: document.getElementById("clearBtn"),
+      copyBtn: document.getElementById("copyBtn"),
+    };
+
+    function escapeRegExp(s) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function countOccurrences(text, words) {
+      let count = 0;
+      for (const w of words) {
+        const re = new RegExp(escapeRegExp(w), "g");
+        const m = text.match(re);
+        if (m) count += m.length;
+      }
+      return count;
+    }
+
+    function countByRegex(text, re) {
+      const m = text.match(re);
+      return m ? m.length : 0;
+    }
+
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function statusFromReadability(pct) {
+      if (pct >= 80) return "かなり読みやすい";
+      if (pct >= 60) return "読みやすい";
+      if (pct >= 40) return "ふつう";
+      if (pct >= 20) return "やや読みにくい";
+      return "かなり読みにくい";
+    }
+
+    function colorFromReadability(pct) {
+      // 読みやすいほど緑(120) → 読みにくいほど赤(0)
+      const hue = 0 + (120 - 0) * (pct / 100);
+      return `hsl(${hue.toFixed(0)} 70% 45%)`;
+    }
+
+    function splitSentences(raw) {
+      // 句点や感嘆符などで分割。空要素は除去
+      return raw
+        .split(/[。！？!?]/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    function compute(text) {
+      const raw = text.trim();
+      const chars = raw.length;
+      const lines = raw ? raw.split(/\r?\n/).length : 0;
+
+      const commas = countByRegex(raw, /、/g);
+      const conj = countOccurrences(raw, WORDS.conjunctions);
+      const abs = countOccurrences(raw, WORDS.abstractWords);
+
+      const sentencesArr = splitSentences(raw);
+      const sentenceCount = sentencesArr.length;
+
+      let avgSentLen = 0;
+      if (sentenceCount > 0) {
+        const total = sentencesArr.reduce((sum, s) => sum + s.length, 0);
+        avgSentLen = Math.round(total / sentenceCount);
+      }
+
+      // 文長ペナルティ：長い文が多いほど上がる（読み手の息継ぎができない）
+      let longPenalty = 0;
+      for (const s of sentencesArr) {
+        const len = s.length;
+        if (len > SENTENCE_SOFT_LIMIT) {
+          longPenalty += (len - SENTENCE_SOFT_LIMIT) * 0.6;
+        }
+        if (len > SENTENCE_HARD_LIMIT) {
+          longPenalty += (len - SENTENCE_HARD_LIMIT) * 0.9;
+        }
+      }
+      longPenalty = Math.round(longPenalty);
+
+      // “読者負荷”のペナルティ合算（ここが読みやすさメータの本体）
+      const penalty =
+        commas * weights.commas +
+        conj * weights.conjunction +
+        abs * weights.abstract +
+        longPenalty * 0.25;
+
+      const penaltyPct = clamp(Math.round((penalty / PENALTY_MAX) * 100), 0, 100);
+
+      // 読みやすさ = 100 - 負荷
+      const readability = clamp(100 - penaltyPct, 0, 100);
+
+      return {
+        chars, lines,
+        sentenceCount, avgSentLen,
+        commas, conj, abs,
+        longPenalty,
+        penalty, readability
+      };
+    }
+
+    function render() {
+      const r = compute(el.input.value);
+
+      el.pct.textContent = String(r.readability);
+      el.state.textContent = statusFromReadability(r.readability);
+
+      el.bar.style.width = `${r.readability}%`;
+      el.bar.style.background = colorFromReadability(r.readability);
+
+      // 内訳
+      el.chars.textContent = String(r.chars);
+      el.lines.textContent = String(r.lines);
+      el.sentences.textContent = String(r.sentenceCount);
+      el.avgSentLen.textContent = String(r.avgSentLen);
+      el.commas.textContent = String(r.commas);
+      el.conj.textContent = String(r.conj);
+      el.abs.textContent = String(r.abs);
+      el.longPenalty.textContent = String(r.longPenalty);
+    }
+
+    el.input.addEventListener("input", render);
+
+    el.clearBtn.addEventListener("click", () => {
+      el.input.value = "";
+      render();
+      el.input.focus();
+    });
+
+    el.copyBtn.addEventListener("click", async () => {
+      const r = compute(el.input.value);
+      const text = `読みやすさ: ${r.readability}%（${statusFromReadability(r.readability)}）`;
+      try {
+        await navigator.clipboard.writeText(text);
+        el.copyBtn.textContent = "コピーしました";
+        setTimeout(() => (el.copyBtn.textContent = "共有用テキストをコピー"), 1200);
+      } catch {
+        prompt("コピーできない環境です。手動でコピーしてください：", text);
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
