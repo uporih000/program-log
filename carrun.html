@@ -5,28 +5,57 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FC Runner - Fuel</title>
   <style>
-    body { margin:0; background:#111; display:grid; place-items:center; height:100vh; color:#ddd; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; color:#ddd; font-family: system-ui, -apple-system, sans-serif; }
+    .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
     canvas{
-      width: 768px; height: 720px; /* 256*3, 240*3 */
+      width: 768px; height: 720px; /* default 256*3, 240*3 (resized in JS) */
       image-rendering: pixelated;
       border: 2px solid #333;
       background:#000;
       touch-action: none;
     }
-    .hint{ margin-top:10px; font-size:14px; opacity:.8; }
+    .controls{ margin-top:8px; display:flex; gap:16px; justify-content:center; }
+    .btn{
+      width:120px; height:44px;
+      border:2px solid #2b2b2b;
+      background:#1b1b1b;
+      color:#ddd;
+      font-size:16px;
+      font-family: system-ui, -apple-system, sans-serif;
+      border-radius:8px;
+      touch-action: manipulation;
+    }
+    .hint{ margin-top:8px; font-size:12px; opacity:.8; }
   </style>
 </head>
 <body>
-  <div>
+  <div class="wrap">
     <canvas id="c" width="256" height="240"></canvas>
-  <div class="hint">← → / A D：レーン移動　タップ/スワイプ：左右　R：リスタート</div>
+    <div class="controls">
+      <button class="btn" id="leftBtn">LEFT</button>
+      <button class="btn" id="rightBtn">RIGHT</button>
+    </div>
+    <div class="hint">[PC] ← →：レーン移動 R：リスタート</div>
   </div>
 
 <script>
 const W=256, H=240;
 const canvas = document.getElementById("c");
+const controls = document.querySelector(".controls");
+const leftBtn = document.getElementById("leftBtn");
+const rightBtn = document.getElementById("rightBtn");
 const ctx = canvas.getContext("2d", { alpha:false });
 ctx.imageSmoothingEnabled = false;
+
+function resizeCanvas(){
+  const pad = 100;
+  const scaleRaw = Math.min(window.innerWidth / W, (window.innerHeight - pad) / H);
+  const scale = scaleRaw >= 2 ? Math.floor(scaleRaw) : scaleRaw;
+  canvas.style.width = (W * scale) + "px";
+  canvas.style.height = (H * scale) + "px";
+}
+addEventListener("resize", resizeCanvas);
+resizeCanvas();
 
 const keys = new Set();
 addEventListener("keydown", e => keys.add(e.key));
@@ -75,6 +104,15 @@ canvas.addEventListener("pointerup", e => {
   touch.activeId = null;
 });
 canvas.addEventListener("pointercancel", () => { touch.activeId = null; });
+
+leftBtn.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  moveLane(-1);
+});
+rightBtn.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  moveLane(1);
+});
 
 const lanes = [64, 128, 192]; // 3レーンの中心X
 const roadTop = 40;
@@ -165,6 +203,7 @@ function aabb(ax,ay,aw,ah,bx,by,bw,bh){
 function update(dt){
   if (!state.running){
     if (keys.has("r") || keys.has("R")) reset();
+    updateControls();
     return;
   }
 
@@ -258,7 +297,26 @@ function update(dt){
 }
 
 function moveLane(dir){
+  if (!state.running){
+    reset();
+    return;
+  }
   state.car.lane = Math.max(0, Math.min(2, state.car.lane + dir));
+}
+
+function updateControls(){
+  if (!leftBtn || !rightBtn || !controls) return;
+  if (state.running){
+    leftBtn.textContent = "LEFT";
+    rightBtn.textContent = "RIGHT";
+    leftBtn.style.display = "inline-block";
+    rightBtn.style.display = "inline-block";
+  } else {
+    leftBtn.textContent = "RESTART";
+    rightBtn.textContent = "RESTART";
+    leftBtn.style.display = "inline-block";
+    rightBtn.style.display = "none";
+  }
 }
 
 // 押下を1回として消費（簡易エッジ）
@@ -409,6 +467,7 @@ function loop(now){
   last = now;
   update(dt);
   draw();
+  updateControls();
   requestAnimationFrame(loop);
 }
 
