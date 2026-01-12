@@ -218,34 +218,6 @@
         font-size: 12px;
       }
 
-      .cookie-banner {
-        position: fixed;
-        left: 24px;
-        right: 24px;
-        bottom: 18px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-        justify-content: space-between;
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 12px 16px;
-        box-shadow: 0 12px 26px var(--shadow);
-        z-index: 20;
-      }
-
-      .cookie-banner.hidden {
-        display: none;
-      }
-
-      .cookie-banner p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 14px;
-      }
-
       .output-options {
         display: grid;
         gap: 6px;
@@ -361,15 +333,6 @@
       <button data-cmd="h5">H5</button>
     </div>
 
-    <div class="cookie-banner hidden" id="cookieBanner">
-      <p>このツールは作業内容をCookieに保存します。続行するには許可してください。</p>
-      <p id="cookieNotice" class="hidden">Cookieが未許可のため自動保存されません</p>
-      <div class="controls">
-        <button id="acceptCookies">許可する</button>
-        <button class="secondary" id="declineCookies">後で</button>
-      </div>
-    </div>
-
     <script>
       const editor = document.getElementById("editor");
       const pageTabs = document.getElementById("pageTabs");
@@ -388,10 +351,6 @@
       const saveJsonBtn = document.getElementById("saveJson");
       const copyJsonBtn = document.getElementById("copyJson");
       const selectionToolbar = document.getElementById("selectionToolbar");
-      const cookieBanner = document.getElementById("cookieBanner");
-      const cookieNotice = document.getElementById("cookieNotice");
-      const acceptCookiesBtn = document.getElementById("acceptCookies");
-      const declineCookiesBtn = document.getElementById("declineCookies");
       const headingLevel = document.getElementById("headingLevel");
       const level1Select = document.getElementById("level1Select");
       const level2Input = document.getElementById("level2Input");
@@ -403,10 +362,6 @@
       const headingTextWrap = document.getElementById("headingTextWrap");
 
       const DEFAULT_H1 = ["要件", "基本設計", "詳細設計"];
-      const STATE_COOKIE = "codex_prompt_maker_state_v1";
-      const CONSENT_COOKIE = "codex_prompt_maker_consent_v1";
-      const CONSENT_SESSION = "codex_prompt_maker_consent_session_v1";
-
       const state = {
         pages: [],
         currentIndex: 0,
@@ -423,59 +378,14 @@
         };
       };
 
-      const setCookie = (name, value, days = 365) => {
-        const date = new Date();
-        date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
-        document.cookie = `${name}=${encodeURIComponent(value)}; expires=${date.toUTCString()}; path=/`;
-      };
-
-      const getCookie = (name) => {
-        const parts = document.cookie.split("; ").map((item) => item.split("="));
-        const match = parts.find(([key]) => key === name);
-        return match ? decodeURIComponent(match[1]) : null;
-      };
-
       const saveState = () => {
-        if (getCookie(CONSENT_COOKIE) !== "accepted") return;
-        const payload = JSON.stringify(state);
-        setCookie(STATE_COOKIE, payload);
+        return;
       };
 
       const saveStateDebounced = debounce(saveState, 500);
 
       const loadState = () => {
-        const raw = getCookie(STATE_COOKIE);
-        if (!raw) {
-          createInitialPage();
-          return;
-        }
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.pages)) {
-            state.pages = parsed.pages;
-            state.currentIndex = parsed.currentIndex || 0;
-            state.level1Options = parsed.level1Options || [...DEFAULT_H1];
-            state.level2History = parsed.level2History || [];
-            state.theme = parsed.theme || "light";
-          }
-        } catch (error) {
-          createInitialPage();
-        }
-      };
-
-      const updateCookieBanner = () => {
-        const consent = getCookie(CONSENT_COOKIE);
-        if (consent === "accepted") {
-          cookieBanner.classList.add("hidden");
-          cookieNotice.classList.add("hidden");
-          return;
-        }
-        cookieBanner.classList.remove("hidden");
-        if (sessionStorage.getItem(CONSENT_SESSION) === "declined") {
-          cookieNotice.classList.remove("hidden");
-        } else {
-          cookieNotice.classList.add("hidden");
-        }
+        createInitialPage();
       };
 
       const createInitialPage = () => {
@@ -992,21 +902,7 @@
       renderTabs();
       editor.innerHTML = state.pages[state.currentIndex]?.html || "";
       ensureDefaultList();
-      updateCookieBanner();
       saveStateDebounced();
-
-      acceptCookiesBtn.addEventListener("click", () => {
-        setCookie(CONSENT_COOKIE, "accepted");
-        sessionStorage.removeItem(CONSENT_SESSION);
-        updateCookieBanner();
-        saveStateDebounced();
-      });
-
-      declineCookiesBtn.addEventListener("click", () => {
-        setCookie(CONSENT_COOKIE, "declined", 7);
-        sessionStorage.setItem(CONSENT_SESSION, "declined");
-        updateCookieBanner();
-      });
     </script>
   </body>
 </html>
