@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0GZ9S9X6EZ"></script>
+        <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-0GZ9S9X6EZ');
+        </script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>プロンプトメーカー For Codex</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f2efe9;
+        --bg-accent: #f7f1da;
+        --panel: #ffffff;
+        --ink: #2b2a27;
+        --muted: #6c655c;
+        --line: #ddd1c1;
+        --accent: #d96f32;
+        --accent-2: #2b7c7b;
+        --shadow: rgba(59, 45, 24, 0.14);
+      }
+
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #12100e;
+        --bg-accent: #1f1a17;
+        --panel: #1a1816;
+        --ink: #f0e7da;
+        --muted: #b0a494;
+        --line: #3a3128;
+        --accent: #f0975b;
+        --accent-2: #6bc3c0;
+        --shadow: rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Georgia", "Garamond", "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 15% 10%, rgba(217, 111, 50, 0.15), transparent 55%),
+          radial-gradient(circle at 85% 30%, rgba(43, 124, 123, 0.18), transparent 50%),
+          linear-gradient(145deg, var(--bg), var(--bg-accent));
+        min-height: 100vh;
+      }
+
+      header {
+        padding: 24px 24px 12px;
+      }
+
+      header h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        letter-spacing: 0.08em;
+      }
+
+      header p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      main {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 0 24px 32px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 14px 30px var(--shadow);
+        padding: 18px;
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      button,
+      select,
+      input,
+      textarea {
+        font-family: "Trebuchet MS", "Gill Sans", "Segoe UI", sans-serif;
+      }
+
+      button {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px var(--shadow);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+
+      .row {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        margin-bottom: 8px;
+      }
+
+      label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      .editor {
+        min-height: 360px;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px dashed var(--line);
+        outline: none;
+        font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+        line-height: 1.6;
+      }
+
+      .editor:empty::before {
+        content: "ここに指示の下書きを入力します。見出しや整形は上の入力や選択ポップアップから。";
+        color: var(--muted);
+      }
+
+      .page-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 16px;
+        margin-bottom: 12px;
+      }
+
+      .page-tabs button {
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--ink);
+        padding: 6px 12px;
+      }
+
+      .page-tabs button.active {
+        background: var(--accent-2);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      .toolbar-popup {
+        position: absolute;
+        display: none;
+        gap: 6px;
+        padding: 8px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 10px 20px var(--shadow);
+        z-index: 10;
+      }
+
+      .toolbar-popup button {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .cookie-banner {
+        position: fixed;
+        left: 24px;
+        right: 24px;
+        bottom: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 12px 16px;
+        box-shadow: 0 12px 26px var(--shadow);
+        z-index: 20;
+      }
+
+      .cookie-banner.hidden {
+        display: none;
+      }
+
+      .cookie-banner p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .output-options {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        align-items: end;
+        margin-bottom: 8px;
+      }
+
+      .json-area textarea {
+        min-height: 160px;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+      }
+
+      @media (max-width: 980px) {
+        main {
+          padding: 0 16px 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>プロンプトメーカー For Codex</h1>
+      <p>Codex への指示を素早く組み立てて、履歴ごと保存・出力できます。</p>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>入力エリア</h2>
+        <div class="panel" style="margin-bottom: 14px;">
+          <h2>見出し挿入</h2>
+          <div class="row">
+            <div>
+              <label for="headingLevel">段階</label>
+              <select id="headingLevel">
+                <option value="1">H1</option>
+                <option value="2">H2</option>
+                <option value="3">H3</option>
+                <option value="4">H4</option>
+                <option value="5">H5</option>
+              </select>
+            </div>
+            <div id="level1Wrap">
+              <label for="level1Input">H1 候補</label>
+              <input id="level1Input" list="level1List" placeholder="H1を入力" />
+              <datalist id="level1List"></datalist>
+            </div>
+            <div id="level2Wrap">
+              <label for="level2Input">H2 候補</label>
+              <input id="level2Input" list="level2List" placeholder="H2を入力" />
+              <datalist id="level2List"></datalist>
+            </div>
+            <div id="headingTextWrap">
+              <label for="headingText">見出しテキスト</label>
+              <input id="headingText" placeholder="見出しを入力" />
+            </div>
+          </div>
+          <div class="controls">
+            <button class="secondary" id="insertHeading">見出しを挿入</button>
+          </div>
+        </div>
+        <div id="editor" class="editor" contenteditable="true"></div>
+        <div class="page-tabs" id="pageTabs"></div>
+        <div class="controls">
+          <button id="addPage">ページ追加</button>
+          <button class="secondary" id="renamePage">ページ名変更</button>
+          <button class="secondary" id="deletePage">ページ削除</button>
+          <button class="secondary" id="deleteAllPages">全ページ削除</button>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>出力・保存</h2>
+        <div class="controls">
+          <button id="toggleTheme">ダーク/ライト切替</button>
+          <button class="secondary" id="exportMarkdown">Markdown出力</button>
+          <button class="secondary" id="copyMarkdown">コピー</button>
+        </div>
+        <div class="output-options">
+          <div>
+            <label for="outputScope">出力範囲</label>
+            <select id="outputScope">
+              <option value="current">現在のページ</option>
+              <option value="all">全ページ</option>
+              <option value="specific">指定ページ</option>
+            </select>
+          </div>
+          <div>
+            <label for="specificPage">ページ番号</label>
+            <input id="specificPage" type="number" min="1" value="1" />
+          </div>
+        </div>
+        <textarea id="markdownOutput" placeholder="Markdown出力がここに表示されます"></textarea>
+        <div class="panel json-area" style="margin-top: 16px;">
+          <h2>データセーブ（JSON）</h2>
+          <textarea id="jsonData" placeholder="JSONを貼り付けて読み込み、書き出しもここに表示されます"></textarea>
+          <div class="controls">
+            <button class="secondary" id="loadJson">JSON読み込み</button>
+            <button class="secondary" id="saveJson">JSON書き出し</button>
+            <button class="secondary" id="copyJson">JSONコピー</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toolbar-popup" id="selectionToolbar">
+      <button data-cmd="bold">太字</button>
+      <button data-cmd="italic">斜体</button>
+      <button data-cmd="code">コード</button>
+      <button data-cmd="link">リンク</button>
+      <button data-cmd="h1">H1</button>
+      <button data-cmd="h2">H2</button>
+    </div>
+
+    <div class="cookie-banner hidden" id="cookieBanner">
+      <p>このツールは作業内容をCookieに保存します。続行するには許可してください。</p>
+      <p id="cookieNotice" class="hidden">Cookieが未許可のため自動保存されません</p>
+      <div class="controls">
+        <button id="acceptCookies">許可する</button>
+        <button class="secondary" id="declineCookies">後で</button>
+      </div>
+    </div>
+
+    <script>
+      const editor = document.getElementById("editor");
+      const pageTabs = document.getElementById("pageTabs");
+      const addPageBtn = document.getElementById("addPage");
+      const renamePageBtn = document.getElementById("renamePage");
+      const deletePageBtn = document.getElementById("deletePage");
+      const deleteAllPagesBtn = document.getElementById("deleteAllPages");
+      const toggleThemeBtn = document.getElementById("toggleTheme");
+      const outputScope = document.getElementById("outputScope");
+      const specificPage = document.getElementById("specificPage");
+      const markdownOutput = document.getElementById("markdownOutput");
+      const exportMarkdownBtn = document.getElementById("exportMarkdown");
+      const copyMarkdownBtn = document.getElementById("copyMarkdown");
+      const jsonData = document.getElementById("jsonData");
+      const loadJsonBtn = document.getElementById("loadJson");
+      const saveJsonBtn = document.getElementById("saveJson");
+      const copyJsonBtn = document.getElementById("copyJson");
+      const selectionToolbar = document.getElementById("selectionToolbar");
+      const cookieBanner = document.getElementById("cookieBanner");
+      const cookieNotice = document.getElementById("cookieNotice");
+      const acceptCookiesBtn = document.getElementById("acceptCookies");
+      const declineCookiesBtn = document.getElementById("declineCookies");
+      const headingLevel = document.getElementById("headingLevel");
+      const level1Input = document.getElementById("level1Input");
+      const level1List = document.getElementById("level1List");
+      const level2Input = document.getElementById("level2Input");
+      const level2List = document.getElementById("level2List");
+      const headingText = document.getElementById("headingText");
+      const insertHeading = document.getElementById("insertHeading");
+      const level1Wrap = document.getElementById("level1Wrap");
+      const level2Wrap = document.getElementById("level2Wrap");
+      const headingTextWrap = document.getElementById("headingTextWrap");
+
+      const DEFAULT_H1 = ["要件", "基本設計", "詳細設計"];
+      const STATE_COOKIE = "codex_prompt_maker_state_v1";
+      const CONSENT_COOKIE = "codex_prompt_maker_consent_v1";
+      const CONSENT_SESSION = "codex_prompt_maker_consent_session_v1";
+
+      const state = {
+        pages: [],
+        currentIndex: 0,
+        level1Options: [...DEFAULT_H1],
+        level2History: [],
+        theme: "light",
+      };
+
+      const debounce = (fn, wait = 300) => {
+        let timer = null;
+        return (...args) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), wait);
+        };
+      };
+
+      const setCookie = (name, value, days = 365) => {
+        const date = new Date();
+        date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+        document.cookie = `${name}=${encodeURIComponent(value)}; expires=${date.toUTCString()}; path=/`;
+      };
+
+      const getCookie = (name) => {
+        const parts = document.cookie.split("; ").map((item) => item.split("="));
+        const match = parts.find(([key]) => key === name);
+        return match ? decodeURIComponent(match[1]) : null;
+      };
+
+      const saveState = () => {
+        if (getCookie(CONSENT_COOKIE) !== "accepted") return;
+        const payload = JSON.stringify(state);
+        setCookie(STATE_COOKIE, payload);
+      };
+
+      const saveStateDebounced = debounce(saveState, 500);
+
+      const loadState = () => {
+        const raw = getCookie(STATE_COOKIE);
+        if (!raw) {
+          createInitialPage();
+          return;
+        }
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.pages)) {
+            state.pages = parsed.pages;
+            state.currentIndex = parsed.currentIndex || 0;
+            state.level1Options = parsed.level1Options || [...DEFAULT_H1];
+            state.level2History = parsed.level2History || [];
+            state.theme = parsed.theme || "light";
+          }
+        } catch (error) {
+          createInitialPage();
+        }
+      };
+
+      const updateCookieBanner = () => {
+        const consent = getCookie(CONSENT_COOKIE);
+        if (consent === "accepted") {
+          cookieBanner.classList.add("hidden");
+          cookieNotice.classList.add("hidden");
+          return;
+        }
+        cookieBanner.classList.remove("hidden");
+        if (sessionStorage.getItem(CONSENT_SESSION) === "declined") {
+          cookieNotice.classList.remove("hidden");
+        } else {
+          cookieNotice.classList.add("hidden");
+        }
+      };
+
+      const createInitialPage = () => {
+        state.pages = [
+          {
+            id: Date.now(),
+            title: "ページ1",
+            html: "",
+          },
+        ];
+        state.currentIndex = 0;
+      };
+
+      const renderTabs = () => {
+        pageTabs.innerHTML = "";
+        state.pages.forEach((page, index) => {
+          const btn = document.createElement("button");
+          btn.textContent = page.title;
+          btn.className = index === state.currentIndex ? "active" : "";
+          btn.addEventListener("click", () => switchPage(index));
+          pageTabs.appendChild(btn);
+        });
+      };
+
+      const switchPage = (index) => {
+        saveCurrentPage();
+        state.currentIndex = index;
+        editor.innerHTML = state.pages[index].html || "";
+        ensureDefaultList();
+        renderTabs();
+        saveStateDebounced();
+      };
+
+      const saveCurrentPage = () => {
+        const page = state.pages[state.currentIndex];
+        if (page) {
+          page.html = editor.innerHTML;
+        }
+      };
+
+      const addPage = () => {
+        saveCurrentPage();
+        const newIndex = state.pages.length + 1;
+        state.pages.push({
+          id: Date.now() + newIndex,
+          title: `ページ${newIndex}`,
+          html: "",
+        });
+        state.currentIndex = state.pages.length - 1;
+        editor.innerHTML = "";
+        ensureDefaultList();
+        renderTabs();
+        saveStateDebounced();
+      };
+
+      const renamePage = () => {
+        const page = state.pages[state.currentIndex];
+        if (!page) return;
+        const name = prompt("新しいページ名を入力してください", page.title);
+        if (name) {
+          page.title = name;
+          renderTabs();
+          saveStateDebounced();
+        }
+      };
+
+      const deletePage = () => {
+        if (state.pages.length <= 1) return;
+        const ok = confirm("現在のページを削除しますか？");
+        if (!ok) return;
+        state.pages.splice(state.currentIndex, 1);
+        state.currentIndex = Math.max(0, state.currentIndex - 1);
+        editor.innerHTML = state.pages[state.currentIndex].html || "";
+        ensureDefaultList();
+        renderTabs();
+        saveStateDebounced();
+      };
+
+      const deleteAllPages = () => {
+        const ok = confirm("全ページを削除しますか？");
+        if (!ok) return;
+        createInitialPage();
+        editor.innerHTML = "";
+        ensureDefaultList();
+        renderTabs();
+        saveStateDebounced();
+      };
+
+      const applyTheme = () => {
+        document.documentElement.setAttribute("data-theme", state.theme);
+      };
+
+      const updateLevelOptions = () => {
+        level1List.innerHTML = "";
+        state.level1Options.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item;
+          level1List.appendChild(option);
+        });
+
+        level2List.innerHTML = "";
+        state.level2History.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item;
+          level2List.appendChild(option);
+        });
+      };
+
+      const updateHeadingInputs = () => {
+        const level = Number(headingLevel.value);
+        level1Wrap.style.display = level === 1 ? "block" : "none";
+        level2Wrap.style.display = level === 2 ? "block" : "none";
+        headingTextWrap.style.display = level >= 3 ? "block" : "none";
+      };
+
+      const ensureDefaultList = () => {
+        if (!editor.innerHTML.trim()) {
+          editor.innerHTML = "<ul><li><br></li></ul>";
+        }
+      };
+
+      const insertAtEnd = (html) => {
+        editor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand("insertHTML", false, html);
+      };
+
+      const insertHeadingAtSelectionOrEnd = (html) => {
+        const selection = window.getSelection();
+        const hasRange = selection && selection.rangeCount > 0;
+        const isInsideEditor =
+          hasRange && editor.contains(selection.getRangeAt(0).commonAncestorContainer);
+        const hasSelection = hasRange && !selection.isCollapsed && isInsideEditor;
+        const withBreak = `<div><br></div>${html}`;
+        if (hasSelection) {
+          document.execCommand("insertHTML", false, withBreak);
+        } else {
+          insertAtEnd(withBreak);
+        }
+      };
+
+      const insertHeadingText = () => {
+        const level = Number(headingLevel.value);
+        let text = "";
+        if (level === 1) {
+          text = level1Input.value;
+          const newItem = level1Input.value.trim();
+          if (newItem && !state.level1Options.includes(newItem)) {
+            state.level1Options.unshift(newItem);
+            if (state.level1Options.length > 20) {
+              state.level1Options.pop();
+            }
+          }
+          updateLevelOptions();
+          level1Input.value = "";
+        } else if (level === 2) {
+          text = level2Input.value || headingText.value;
+          const newItem = level2Input.value.trim();
+          if (newItem && !state.level2History.includes(newItem)) {
+            state.level2History.unshift(newItem);
+            if (state.level2History.length > 20) {
+              state.level2History.pop();
+            }
+          }
+          updateLevelOptions();
+          level2Input.value = "";
+        } else {
+          text = headingText.value;
+        }
+
+        if (!text) return;
+        insertHeadingAtSelectionOrEnd(`<h${level}>${text}</h${level}>`);
+        headingText.value = "";
+        saveStateDebounced();
+      };
+
+      const showToolbar = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+          selectionToolbar.style.display = "none";
+          return;
+        }
+        const range = selection.getRangeAt(0);
+        if (!editor.contains(range.commonAncestorContainer)) {
+          selectionToolbar.style.display = "none";
+          return;
+        }
+        const rect = range.getBoundingClientRect();
+        selectionToolbar.style.display = "flex";
+        selectionToolbar.style.top = `${rect.top + window.scrollY - 46}px`;
+        selectionToolbar.style.left = `${rect.left + window.scrollX}px`;
+      };
+
+      const hideToolbar = () => {
+        selectionToolbar.style.display = "none";
+      };
+
+      const applyFormat = (cmd) => {
+        if (cmd === "link") {
+          const url = prompt("リンクURLを入力");
+          if (!url) return;
+          document.execCommand("createLink", false, url);
+          return;
+        }
+        if (cmd === "h1" || cmd === "h2") {
+          const level = cmd === "h1" ? 1 : 2;
+          const selection = window.getSelection();
+          const hasRange = selection && selection.rangeCount > 0;
+          const li = hasRange ? getClosest(selection.anchorNode, "li") : null;
+          if (li) {
+            const text = selection.isCollapsed
+              ? li.textContent.trim()
+              : selection.toString().trim();
+            const heading = document.createElement(`h${level}`);
+            heading.textContent = text || "見出し";
+            const list = li.parentElement;
+            li.replaceWith(heading);
+            if (list && list.children.length === 0) {
+              list.remove();
+            }
+          } else {
+            document.execCommand("formatBlock", false, `h${level}`);
+          }
+          return;
+        }
+        if (cmd === "code") {
+          const selection = window.getSelection();
+          if (!selection || selection.isCollapsed) return;
+          const text = selection.toString();
+          document.execCommand("insertHTML", false, `<code>${text}</code>`);
+          return;
+        }
+        document.execCommand(cmd);
+      };
+
+      const htmlToMarkdown = (html) => {
+        const container = document.createElement("div");
+        container.innerHTML = html;
+        const lines = [];
+
+        const walk = (node) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            return node.textContent;
+          }
+          if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+          const tag = node.tagName.toLowerCase();
+          const children = Array.from(node.childNodes).map(walk).join("");
+
+          if (tag === "h1") return `# ${children}`.trim();
+          if (tag === "h2") return `## ${children}`.trim();
+          if (tag === "h3") return `### ${children}`.trim();
+          if (tag === "h4") return `#### ${children}`.trim();
+          if (tag === "h5") return `##### ${children}`.trim();
+          if (tag === "strong" || tag === "b") return `**${children}**`;
+          if (tag === "em" || tag === "i") return `*${children}*`;
+          if (tag === "code") return `\`${children}\``;
+          if (tag === "a") {
+            const href = node.getAttribute("href") || "";
+            return `[${children}](${href})`;
+          }
+          if (tag === "br") return "\n";
+          if (tag === "p") return children.trim();
+          if (tag === "li") return `- ${children.trim()}`;
+          if (tag === "ul" || tag === "ol") {
+            return Array.from(node.children)
+              .map((child) => walk(child))
+              .filter(Boolean)
+              .join("\n");
+          }
+          if (tag === "div") return children.trim();
+          return children;
+        };
+
+        Array.from(container.childNodes).forEach((node) => {
+          const result = walk(node);
+          if (result) {
+            lines.push(result);
+          }
+        });
+
+        return lines.join("\n\n").replace(/\n{3,}/g, "\n\n");
+      };
+
+      const exportMarkdown = () => {
+        saveCurrentPage();
+        const scope = outputScope.value;
+        let output = "";
+        if (scope === "all") {
+          output = state.pages
+            .map((page, index) => {
+              const header = `<!-- ${page.title || `ページ${index + 1}`} -->`;
+              return [header, htmlToMarkdown(page.html)].filter(Boolean).join("\n");
+            })
+            .join("\n\n");
+        } else if (scope === "specific") {
+          const idx = Number(specificPage.value) - 1;
+          const page = state.pages[idx];
+          if (page) output = htmlToMarkdown(page.html);
+        } else {
+          const page = state.pages[state.currentIndex];
+          output = htmlToMarkdown(page.html);
+        }
+        markdownOutput.value = output;
+      };
+
+      const exportJson = () => {
+        saveCurrentPage();
+        jsonData.value = JSON.stringify(state, null, 2);
+      };
+
+      const importJson = () => {
+        try {
+          const parsed = JSON.parse(jsonData.value);
+          if (!parsed || !Array.isArray(parsed.pages)) {
+            alert("JSON形式が正しくありません。");
+            return;
+          }
+          state.pages = parsed.pages;
+          state.currentIndex = parsed.currentIndex || 0;
+          state.level1Options = parsed.level1Options || [...DEFAULT_H1];
+          state.level2History = parsed.level2History || [];
+          state.theme = parsed.theme || "light";
+          editor.innerHTML = state.pages[state.currentIndex]?.html || "";
+          renderTabs();
+          updateLevelOptions();
+          applyTheme();
+          saveStateDebounced();
+        } catch (error) {
+          alert("JSONの読み込みに失敗しました。");
+        }
+      };
+
+      const copyToClipboard = async (value) => {
+        if (!value) return;
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch (error) {
+          alert("コピーに失敗しました。");
+        }
+      };
+
+      editor.addEventListener("input", () => {
+        saveStateDebounced();
+      });
+
+      const getClosest = (node, selector) => {
+        if (!node) return null;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          return node.closest(selector);
+        }
+        if (node.parentElement) {
+          return node.parentElement.closest(selector);
+        }
+        return null;
+      };
+
+      const placeCaretIn = (element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      };
+
+      const insertNewListItemAfter = (li) => {
+        const newLi = document.createElement("li");
+        newLi.innerHTML = "<br>";
+        li.parentNode.insertBefore(newLi, li.nextSibling);
+        placeCaretIn(newLi);
+      };
+
+      const getListDepth = (node) => {
+        let depth = 0;
+        let current = getClosest(node, "ul, ol");
+        while (current && editor.contains(current)) {
+          depth += 1;
+          current = getClosest(current.parentElement, "ul, ol");
+        }
+        return depth;
+      };
+
+      editor.addEventListener("keydown", (event) => {
+        if (event.key === "Tab") {
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) return;
+          if (!editor.contains(selection.anchorNode)) return;
+          const li = getClosest(selection.anchorNode, "li");
+          if (li) {
+            event.preventDefault();
+            if (event.shiftKey) {
+              document.execCommand("outdent");
+            } else {
+              document.execCommand("indent");
+            }
+          }
+          return;
+        }
+        if (event.key === "Backspace") {
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) return;
+          if (!editor.contains(selection.anchorNode)) return;
+          const li = getClosest(selection.anchorNode, "li");
+          if (li && li.textContent.trim() === "" && getListDepth(li) > 1) {
+            event.preventDefault();
+            document.execCommand("outdent");
+            saveStateDebounced();
+          }
+          return;
+        }
+        if (event.key !== "Enter") return;
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        if (!editor.contains(selection.anchorNode)) return;
+        const li = getClosest(selection.anchorNode, "li");
+        if (li) {
+          const isEmpty = li.textContent.trim() === "";
+          if (!event.shiftKey && isEmpty) {
+            event.preventDefault();
+            insertNewListItemAfter(li);
+            saveStateDebounced();
+          }
+          return;
+        }
+        if (!event.shiftKey) {
+          event.preventDefault();
+          document.execCommand("insertParagraph");
+          document.execCommand("insertUnorderedList");
+          saveStateDebounced();
+        }
+      });
+
+      document.addEventListener("selectionchange", () => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+          hideToolbar();
+          return;
+        }
+        if (!editor.contains(selection.anchorNode)) {
+          hideToolbar();
+          return;
+        }
+        showToolbar();
+      });
+
+      editor.addEventListener("keyup", (event) => {
+        if (event.key === "Escape") hideToolbar();
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!selectionToolbar.contains(event.target)) {
+          if (!editor.contains(event.target)) hideToolbar();
+        }
+      });
+
+      selectionToolbar.addEventListener("click", (event) => {
+        const cmd = event.target.getAttribute("data-cmd");
+        if (!cmd) return;
+        applyFormat(cmd);
+        hideToolbar();
+        saveStateDebounced();
+      });
+
+      addPageBtn.addEventListener("click", addPage);
+      renamePageBtn.addEventListener("click", renamePage);
+      deletePageBtn.addEventListener("click", deletePage);
+      deleteAllPagesBtn.addEventListener("click", deleteAllPages);
+      toggleThemeBtn.addEventListener("click", () => {
+        state.theme = state.theme === "light" ? "dark" : "light";
+        applyTheme();
+        saveStateDebounced();
+      });
+      exportMarkdownBtn.addEventListener("click", exportMarkdown);
+      copyMarkdownBtn.addEventListener("click", () => copyToClipboard(markdownOutput.value));
+      saveJsonBtn.addEventListener("click", exportJson);
+      loadJsonBtn.addEventListener("click", importJson);
+      copyJsonBtn.addEventListener("click", () => copyToClipboard(jsonData.value));
+      insertHeading.addEventListener("click", insertHeadingText);
+      headingLevel.addEventListener("change", updateHeadingInputs);
+
+      loadState();
+      updateLevelOptions();
+      updateHeadingInputs();
+      applyTheme();
+      renderTabs();
+      editor.innerHTML = state.pages[state.currentIndex]?.html || "";
+      ensureDefaultList();
+      updateCookieBanner();
+      saveStateDebounced();
+
+      acceptCookiesBtn.addEventListener("click", () => {
+        setCookie(CONSENT_COOKIE, "accepted");
+        sessionStorage.removeItem(CONSENT_SESSION);
+        updateCookieBanner();
+        saveStateDebounced();
+      });
+
+      declineCookiesBtn.addEventListener("click", () => {
+        setCookie(CONSENT_COOKIE, "declined", 7);
+        sessionStorage.setItem(CONSENT_SESSION, "declined");
+        updateCookieBanner();
+      });
+    </script>
+  </body>
+</html>
