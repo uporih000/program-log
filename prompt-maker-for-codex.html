@@ -171,7 +171,12 @@
       }
 
       .editor:empty::before {
-        content: "ここに指示の下書きを入力します。見出しや整形は上の入力や選択ポップアップから。";
+        content: "文字選択で整形メニュー、タブキーで箇条書きの深さを調整できます。";
+        color: var(--muted);
+      }
+
+      .editor li.placeholder::before {
+        content: "文字選択で整形メニュー、タブキーで箇条書きの深さを調整できます。";
         color: var(--muted);
       }
 
@@ -284,12 +289,11 @@
               </select>
             </div>
             <div id="level1Wrap">
-              <label for="level1Input">H1 候補</label>
-              <input id="level1Input" list="level1List" placeholder="H1を入力" />
-              <datalist id="level1List"></datalist>
+              <label for="level1Select">H1 履歴</label>
+              <select id="level1Select"></select>
             </div>
             <div id="level2Wrap">
-              <label for="level2Input">H2 候補</label>
+              <label for="level2Input">H2 履歴</label>
               <input id="level2Input" list="level2List" placeholder="H2を入力" />
               <datalist id="level2List"></datalist>
             </div>
@@ -352,6 +356,9 @@
       <button data-cmd="link">リンク</button>
       <button data-cmd="h1">H1</button>
       <button data-cmd="h2">H2</button>
+      <button data-cmd="h3">H3</button>
+      <button data-cmd="h4">H4</button>
+      <button data-cmd="h5">H5</button>
     </div>
 
     <div class="cookie-banner hidden" id="cookieBanner">
@@ -386,8 +393,7 @@
       const acceptCookiesBtn = document.getElementById("acceptCookies");
       const declineCookiesBtn = document.getElementById("declineCookies");
       const headingLevel = document.getElementById("headingLevel");
-      const level1Input = document.getElementById("level1Input");
-      const level1List = document.getElementById("level1List");
+      const level1Select = document.getElementById("level1Select");
       const level2Input = document.getElementById("level2Input");
       const level2List = document.getElementById("level2List");
       const headingText = document.getElementById("headingText");
@@ -563,12 +569,17 @@
       };
 
       const updateLevelOptions = () => {
-        level1List.innerHTML = "";
+        level1Select.innerHTML = "";
         state.level1Options.forEach((item) => {
           const option = document.createElement("option");
           option.value = item;
-          level1List.appendChild(option);
+          option.textContent = item;
+          level1Select.appendChild(option);
         });
+        const addOption = document.createElement("option");
+        addOption.value = "__add__";
+        addOption.textContent = "新しく追加...";
+        level1Select.appendChild(addOption);
 
         level2List.innerHTML = "";
         state.level2History.forEach((item) => {
@@ -589,6 +600,7 @@
         if (!editor.innerHTML.trim()) {
           editor.innerHTML = "<ul><li><br></li></ul>";
         }
+        updateListPlaceholder();
       };
 
       const insertAtEnd = (html) => {
@@ -620,16 +632,22 @@
         const level = Number(headingLevel.value);
         let text = "";
         if (level === 1) {
-          text = level1Input.value;
-          const newItem = level1Input.value.trim();
-          if (newItem && !state.level1Options.includes(newItem)) {
-            state.level1Options.unshift(newItem);
-            if (state.level1Options.length > 20) {
-              state.level1Options.pop();
+          if (level1Select.value === "__add__") {
+            const newItem = prompt("追加するH1を入力");
+            if (newItem) {
+              const trimmed = newItem.trim();
+              if (trimmed && !state.level1Options.includes(trimmed)) {
+                state.level1Options.unshift(trimmed);
+                if (state.level1Options.length > 20) {
+                  state.level1Options.pop();
+                }
+              }
+              text = trimmed;
             }
+            updateLevelOptions();
+          } else {
+            text = level1Select.value;
           }
-          updateLevelOptions();
-          level1Input.value = "";
         } else if (level === 2) {
           text = level2Input.value || headingText.value;
           const newItem = level2Input.value.trim();
@@ -679,8 +697,8 @@
           document.execCommand("createLink", false, url);
           return;
         }
-        if (cmd === "h1" || cmd === "h2") {
-          const level = cmd === "h1" ? 1 : 2;
+        if (cmd === "h1" || cmd === "h2" || cmd === "h3" || cmd === "h4" || cmd === "h5") {
+          const level = Number(cmd.replace("h", ""));
           const selection = window.getSelection();
           const hasRange = selection && selection.rangeCount > 0;
           const li = hasRange ? getClosest(selection.anchorNode, "li") : null;
@@ -818,8 +836,19 @@
       };
 
       editor.addEventListener("input", () => {
+        updateListPlaceholder();
         saveStateDebounced();
       });
+
+      const updateListPlaceholder = () => {
+        const listItems = Array.from(editor.querySelectorAll("li"));
+        listItems.forEach((item) => item.classList.remove("placeholder"));
+        if (listItems.length !== 1) return;
+        const onlyItem = listItems[0];
+        if (onlyItem.textContent.trim() === "") {
+          onlyItem.classList.add("placeholder");
+        }
+      };
 
       const getClosest = (node, selector) => {
         if (!node) return null;
